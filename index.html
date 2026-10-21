@@ -11,11 +11,12 @@
   canvas { display: block; width: 100%; height: 100%; }
 
   #error-box {
-    position: fixed; top: 0; left: 0; right: 0;
+    position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
     background: rgba(190, 0, 0, 0.92); color: #fff;
-    font-family: monospace; font-size: 11px; line-height: 1.35;
-    padding: 6px; max-height: 45%; overflow-y: auto;
-    z-index: 9999; display: none; white-space: pre-wrap; word-break: break-all;
+    font-family: monospace; font-size: 12px; line-height: 1.35;
+    padding: 8px 12px; border-radius: 8px; max-width: 90vw;
+    z-index: 9999; display: none; white-space: pre-wrap; text-align: center;
+    pointer-events: none;
   }
   #loading {
     position: fixed; inset: 0; display: flex;
@@ -126,44 +127,28 @@
 // 1) ОБРАБОТКА ОШИБОК
 // =========================================================
 const errorBox = document.getElementById('error-box');
-const errorLog = [];
 function showError(msg) {
-  errorLog.push(String(msg));
-  errorBox.textContent = errorLog.slice(-6).join('\n\n');
+  errorBox.textContent = String(msg);
   errorBox.style.display = 'block';
-  // Автоскрытие через 6 секунд, чтобы не мешало играть
   clearTimeout(window._errTimeout);
-  window._errTimeout = setTimeout(() => { errorBox.style.display = 'none'; }, 6000);
+  // Скрываем через 5 секунд, чтобы не мешать
+  window._errTimeout = setTimeout(() => { errorBox.style.display = 'none'; }, 5000);
   console.error(msg);
 }
-errorBox.addEventListener('click', () => errorBox.style.display = 'none');
 
-window.onerror = (msg, src, line, col, err) => {
-  showError(`ERR: ${msg}\n@ ${(src||'').split('/').pop()}:${line}:${col}`);
-};
-window.addEventListener('unhandledrejection', (e) => {
-  showError(`PROMISE: ${e.reason?.stack || e.reason}`);
-});
-window.addEventListener('error', (e) => {
-  if (e.target && e.target !== window) {
-    showError(`RESOURCE FAIL: ${e.target.src || e.target.href}`);
-  }
-}, true);
+window.onerror = (msg, src, line, col) => { showError(`ERR: ${msg} @ ${line}:${col}`); };
+window.addEventListener('unhandledrejection', (e) => { showError(`PROMISE: ${e.reason}`); });
 
 // =========================================================
-// 2) ИМПОРТЫ
+// 2) ИМПОРТЫ И НАСТРОЙКИ
 // =========================================================
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 
-// =========================================================
-// 3) КОНФИГУРАЦИЯ
-// =========================================================
 const isDev = new URLSearchParams(location.search).get('dev') === '1';
 const SAVED_OBJECTS = {};
 
-// --- НАСТРОЙКИ ПЕРСОНАЖА ---
 const PLAYER_HEIGHT      = 1.6;
 const PLAYER_RADIUS      = 0.35;
 const MOVE_SPEED         = 5.0;
@@ -171,13 +156,11 @@ const GRAVITY            = 22.0;
 const JUMP_SPEED         = 8.0;
 const AIR_CONTROL        = 0.45;
 const FALL_RESPAWN_Y     = -20;   
-// Если модель смотрит в -Z по умолчанию, поменяй на Math.PI
 const MODEL_FORWARD_OFFSET = 0;
-// Если персонаж всё ещё висит или провалился, измени это значение (например, -0.2 или 0.2)
 const PLAYER_Y_OFFSET      = 0.0; 
 
 // =========================================================
-// 4) THREE.JS БАЗА
+// 3) THREE.JS БАЗА
 // =========================================================
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
@@ -185,7 +168,6 @@ scene.background = new THREE.Color(0x88bbdd);
 
 const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 500);
 
-// Включаем тени для мобилок (1024 разрешение — нормально для телефонов)
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
@@ -195,10 +177,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 container.appendChild(renderer.domElement);
 const canvas = renderer.domElement;
 
-// Свет
-const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444455, 1.0);
-scene.add(hemiLight);
-
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444455, 1.0));
 const sun = new THREE.DirectionalLight(0xffffff, 1.5);
 sun.position.set(20, 40, 20);
 sun.castShadow = true;
@@ -208,12 +187,10 @@ sun.shadow.camera.left = -20;
 sun.shadow.camera.right = 20;
 sun.shadow.camera.top = 20;
 sun.shadow.camera.bottom = -20;
-sun.shadow.camera.near = 0.5;
-sun.shadow.camera.far = 100;
 sun.shadow.bias = -0.001;
 scene.add(sun);
+scene.add(sun.target);
 
-// Сетка для дебага (видно, где y=0)
 if (isDev) {
   const grid = new THREE.GridHelper(50, 50, 0xff0000, 0x555555);
   grid.position.y = 0.02;
@@ -221,11 +198,13 @@ if (isDev) {
 }
 
 // =========================================================
-// 5) СОСТОЯНИЕ
+// 4) СОСТОЯНИЕ
 // =========================================================
 const state = {
   player: {
     mesh: null,
+    modelBaseY: 0,
+    walkCycle: 0,
     mixer: null,
     actions: { idle: null, walk: null },
     currentAction: null,
@@ -235,12 +214,7 @@ const state = {
     targetYaw: 0,
     spawnPoint: new THREE.Vector3(0, 1, 0),
   },
-  camera: {
-    orbitYaw: 0,
-    orbitPitch: 0.35,
-    distance: 6,
-    target: new THREE.Vector3(),
-  },
+  camera: { orbitYaw: 0, orbitPitch: 0.35, distance: 6, target: new THREE.Vector3() },
   map: null,
   input: { forward: 0, right: 0, jumpBuffer: 0 },
 };
@@ -249,26 +223,21 @@ const raycaster = new THREE.Raycaster();
 const DOWN = new THREE.Vector3(0, -1, 0);
 
 // =========================================================
-// 6) ЗАГРУЗКА
+// 5) ЗАГРУЗКА
 // =========================================================
 const loadingEl = document.getElementById('loading');
 const loader = new GLTFLoader();
 let loadedCount = 0;
-const totalLoads = 2;
+
 function checkLoaded() {
   loadedCount++;
-  if (loadedCount >= totalLoads) loadingEl.classList.add('hidden');
+  if (loadedCount >= 2) loadingEl.classList.add('hidden');
 }
 
-// ----- MAP (платформа zov.glb) -----
+// ----- MAP -----
 loader.load('zov.glb', (gltf) => {
   const map = gltf.scene;
-  map.traverse(o => { 
-    if (o.isMesh) { 
-      o.castShadow = false; 
-      o.receiveShadow = true; // Карта принимает тени
-    } 
-  });
+  map.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
   scene.add(map);
   state.map = map;
 
@@ -283,42 +252,34 @@ loader.load('zov.glb', (gltf) => {
   if (state.player.mesh) state.player.mesh.position.copy(state.player.position);
 
   checkLoaded();
-}, (p) => {
-  if (p.total) loadingEl.textContent = `Загрузка карты: ${Math.round(p.loaded / p.total * 100)}%`;
-}, (err) => {
-  showError('Ошибка zov.glb: ' + (err?.message || err));
+}, undefined, (err) => {
+  showError('Ошибка zov.glb: ' + err.message);
   checkLoaded();
 });
 
-// ----- CHARACTER (персонаж shell.glb) -----
+// ----- CHARACTER -----
 loader.load('shell.glb', (gltf) => {
   const model = gltf.scene;
-
-  // Включаем тени для персонажа
   model.traverse(child => {
     if (child.isMesh) {
       child.castShadow = true;
       child.receiveShadow = true;
-      child.frustumCulled = false; // Чтобы не исчезал при анимации
+      child.frustumCulled = false;
     }
   });
 
-  // 1. Масштабируем до PLAYER_HEIGHT
   model.updateMatrixWorld(true);
   let box = new THREE.Box3().setFromObject(model);
   let size = box.getSize(new THREE.Vector3());
-  if (size.y > 0.01) {
-    const s = PLAYER_HEIGHT / size.y;
-    model.scale.setScalar(s);
-  }
+  if (size.y > 0.01) model.scale.setScalar(PLAYER_HEIGHT / size.y);
 
-  // 2. Центрируем по X и Z, и ставим ноги на Y=0
   model.updateMatrixWorld(true);
   box = new THREE.Box3().setFromObject(model);
   const center = box.getCenter(new THREE.Vector3());
   model.position.x = -center.x;
   model.position.z = -center.z;
   model.position.y = -box.min.y + PLAYER_Y_OFFSET;
+  state.player.modelBaseY = model.position.y; // Запоминаем высоту для псевдо-анимации
 
   const group = new THREE.Group();
   group.add(model);
@@ -326,16 +287,10 @@ loader.load('shell.glb', (gltf) => {
   state.player.mesh = group;
   group.position.copy(state.player.position);
 
-  // 3. Анимации
   if (gltf.animations && gltf.animations.length > 0) {
     const mixer = new THREE.AnimationMixer(model);
     state.player.mixer = mixer;
     const clips = gltf.animations;
-
-    // Выводим названия анимаций на экран, чтобы ты знал, как они называются
-    showError("Найдены анимации:\n" + clips.map(a => a.name).join("\n"));
-
-    // Ищем idle и walk (без учета регистра)
     const findClip = (kw) => clips.find(c => c.name.toLowerCase().includes(kw));
     const idleClip = findClip('idle') || findClip('stand') || clips[0];
     const walkClip = findClip('walk') || findClip('run') || clips[1] || clips[0];
@@ -345,29 +300,24 @@ loader.load('shell.glb', (gltf) => {
       state.player.actions.idle.play();
       state.player.currentAction = state.player.actions.idle;
     }
-    if (walkClip) {
-      state.player.actions.walk = mixer.clipAction(walkClip);
-    }
+    if (walkClip) state.player.actions.walk = mixer.clipAction(walkClip);
   } else {
-    showError("В файле shell.glb НЕТ анимаций! (Только статичная модель)");
+    showError("В файле shell.glb НЕТ анимаций! Включена псевдо-анимация покачивания.");
   }
 
   checkLoaded();
-}, (p) => {
-  if (p.total) loadingEl.textContent = `Загрузка персонажа: ${Math.round(p.loaded / p.total * 100)}%`;
-}, (err) => {
-  showError('Ошибка shell.glb: ' + (err?.message || err));
+}, undefined, (err) => {
+  showError('Ошибка shell.glb: ' + err.message);
   checkLoaded();
 });
 
 // =========================================================
-// 7) ФИЗИКА
+// 6) ФИЗИКА И ПСЕВДО-АНИМАЦИЯ
 // =========================================================
 function findGroundHeight(x, z) {
   if (!state.map) return null;
   raycaster.set(new THREE.Vector3(x, 200, z), DOWN);
   raycaster.far = 500;
-  // ВАЖНО: Игнорируем невидимые объекты, чтобы не висеть в воздухе
   const hits = raycaster.intersectObject(state.map, true).filter(h => h.object.visible && h.object.isMesh);
   return hits.length ? hits[0].point.y : null;
 }
@@ -394,7 +344,6 @@ function updatePhysics(dt) {
   const control = p.grounded ? 1 : AIR_CONTROL;
   const delta = moveDir.clone().multiplyScalar(MOVE_SPEED * control * dt);
 
-  // Коллизии со стенами
   if (isMoving && state.map && delta.lengthSq() > 0) {
     const origin = p.position.clone().add(new THREE.Vector3(0, PLAYER_HEIGHT * 0.5, 0));
     raycaster.set(origin, delta.clone().normalize());
@@ -412,29 +361,19 @@ function updatePhysics(dt) {
       if (Math.abs(delta.x) > 1e-4) {
         raycaster.set(origin, new THREE.Vector3(Math.sign(delta.x), 0, 0));
         raycaster.far = Math.abs(delta.x) + PLAYER_RADIUS;
-        const xh = raycaster.intersectObject(state.map, true).filter(h => 
-          h.object.visible && h.object.isMesh &&
-          h.point.y > p.position.y + 0.25 && h.point.y < p.position.y + PLAYER_HEIGHT * 0.9
-        );
-        if (xh.length === 0) p.position.x += delta.x;
+        if (raycaster.intersectObject(state.map, true).filter(h => h.object.visible && h.point.y > p.position.y + 0.25 && h.point.y < p.position.y + PLAYER_HEIGHT * 0.9).length === 0) p.position.x += delta.x;
       }
       if (Math.abs(delta.z) > 1e-4) {
         raycaster.set(origin, new THREE.Vector3(0, 0, Math.sign(delta.z)));
         raycaster.far = Math.abs(delta.z) + PLAYER_RADIUS;
-        const zh = raycaster.intersectObject(state.map, true).filter(h => 
-          h.object.visible && h.object.isMesh &&
-          h.point.y > p.position.y + 0.25 && h.point.y < p.position.y + PLAYER_HEIGHT * 0.9
-        );
-        if (zh.length === 0) p.position.z += delta.z;
+        if (raycaster.intersectObject(state.map, true).filter(h => h.object.visible && h.point.y > p.position.y + 0.25 && h.point.y < p.position.y + PLAYER_HEIGHT * 0.9).length === 0) p.position.z += delta.z;
       }
     }
   }
 
-  // Гравитация
   p.velocity.y -= GRAVITY * dt;
   p.position.y += p.velocity.y * dt;
 
-  // Земля
   const groundY = findGroundHeight(p.position.x, p.position.z);
   if (groundY !== null && p.position.y <= groundY) {
     p.position.y = groundY;
@@ -444,7 +383,6 @@ function updatePhysics(dt) {
     p.grounded = false;
   }
 
-  // Прыжок
   if (state.input.jumpBuffer > 0) {
     state.input.jumpBuffer -= dt;
     if (p.grounded) {
@@ -454,27 +392,41 @@ function updatePhysics(dt) {
     }
   }
 
-  // Респавн при падении
   if (p.position.y < FALL_RESPAWN_Y) {
     p.position.copy(p.spawnPoint);
     p.velocity.set(0, 0, 0);
     p.grounded = false;
   }
 
-  // Меш
+  // --- ВИЗУАЛ И ПСЕВДО-АНИМАЦИЯ ---
   if (p.mesh) {
     p.mesh.position.copy(p.position);
     if (isMoving) p.targetYaw = Math.atan2(moveDir.x, moveDir.z) + MODEL_FORWARD_OFFSET;
+    
     let diff = p.targetYaw - p.mesh.rotation.y;
     while (diff >  Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
     p.mesh.rotation.y += diff * Math.min(1, dt * 12);
+
+    // Если нет реальных анимаций, делаем покачивание (bobbing)
+    if (!p.mixer && p.mesh.children.length > 0) {
+      const model = p.mesh.children[0];
+      if (isMoving && p.grounded) {
+        p.walkCycle += dt * 12; // Скорость покачивания
+        model.position.y = p.modelBaseY + Math.abs(Math.sin(p.walkCycle)) * 0.08; // Прыгает вверх-вниз
+        model.rotation.z = Math.sin(p.walkCycle) * 0.08; // Наклоняется влево-вправо
+        model.rotation.x = 0.15; // Слегка наклоняется вперед при ходьбе
+      } else {
+        p.walkCycle = 0;
+        // Плавно возвращаем в исходное состояние
+        model.position.y += (p.modelBaseY - model.position.y) * Math.min(1, dt * 10);
+        model.rotation.z += (0 - model.rotation.z) * Math.min(1, dt * 10);
+        model.rotation.x += (0 - model.rotation.x) * Math.min(1, dt * 10);
+      }
+    }
   }
 }
 
-// =========================================================
-// 8) АНИМАЦИИ
-// =========================================================
 function updateAnimation(dt) {
   const p = state.player;
   if (!p.mixer) return;
@@ -490,13 +442,9 @@ function updateAnimation(dt) {
   }
 }
 
-// =========================================================
-// 9) КАМЕРА
-// =========================================================
 function updateCamera(dt) {
   const cam = state.camera;
   const p = state.player;
-
   cam.target.lerp(p.position.clone().add(new THREE.Vector3(0, 1.2, 0)), Math.min(1, dt * 12));
 
   const hd = Math.cos(cam.orbitPitch) * cam.distance;
@@ -506,13 +454,12 @@ function updateCamera(dt) {
     cam.target.y + vd,
     cam.target.z + Math.cos(cam.orbitYaw) * hd
   );
-
   camera.position.lerp(desired, Math.min(1, dt * 15));
   camera.lookAt(cam.target);
 }
 
 // =========================================================
-// 10) D-PAD / JUMP
+// 7) UI И ВВОД
 // =========================================================
 const dpad = { up: false, down: false, left: false, right: false };
 
@@ -520,8 +467,8 @@ function bindButton(el, onDown, onUp) {
   const down = e => { e.preventDefault(); onDown(); el.classList.add('active'); };
   const up   = e => { e.preventDefault(); onUp();   el.classList.remove('active'); };
   el.addEventListener('touchstart', down, { passive: false });
-  el.addEventListener('touchend', up,   { passive: false });
-  el.addEventListener('touchcancel', up,{ passive: false });
+  el.addEventListener('touchend', up, { passive: false });
+  el.addEventListener('touchcancel', up, { passive: false });
   el.addEventListener('mousedown', down);
   el.addEventListener('mouseup', up);
   el.addEventListener('mouseleave', up);
@@ -538,9 +485,7 @@ function updateInputFromButtons() {
   state.input.right   = (dpad.right ? 1 : 0) - (dpad.left ? 1 : 0);
 }
 
-// =========================================================
-// 11) ТАЧ-УПРАВЛЕНИЕ (Свайп + Пинч + Тап)
-// =========================================================
+// Тач-управление (Свайп, Пинч, Тап)
 const activeTouches = new Map();
 let pinchState = { active: false, startDist: 0, startZoom: 1 };
 let tapInfo = { active: false, startTime: 0, startX: 0, startY: 0, moved: false };
@@ -610,7 +555,7 @@ canvas.addEventListener('touchcancel', (e) => {
 }, { passive: true });
 
 // =========================================================
-// 12) DEV-РЕЖИМ
+// 8) DEV-РЕЖИМ
 // =========================================================
 const dev = {
   mode: 'play',
@@ -810,7 +755,7 @@ function updateFreeCamera(dt) {
 }
 
 // =========================================================
-// 13) ГЛАВНЫЙ ЦИКЛ
+// 9) ГЛАВНЫЙ ЦИКЛ
 // =========================================================
 let lastTime = performance.now();
 let frameCount = 0, fpsTime = 0, fps = 60;
@@ -838,7 +783,6 @@ function animate() {
   if (dev.transformControls) dev.transformControls.update();
 
   if (isDev) {
-    // Обновляем тень за игроком (чтобы солнце следовало за персонажем)
     sun.position.set(state.player.position.x + 20, state.player.position.y + 40, state.player.position.z + 20);
     sun.target.position.copy(state.player.position);
     sun.target.updateMatrixWorld();
@@ -847,17 +791,13 @@ function animate() {
       `FPS: ${fps}\n` +
       `Mode: ${dev.mode}\n` +
       `P: ${state.player.position.x.toFixed(1)}, ${state.player.position.y.toFixed(1)}, ${state.player.position.z.toFixed(1)}\n` +
-      `Grounded: ${state.player.grounded ? 'Y' : 'N'}` +
-      (dev.selectedObject ? `\nSel: ${dev.selectedObject.userData.editId || '?'}` : '');
+      `Grounded: ${state.player.grounded ? 'Y' : 'N'}`;
   }
 
   renderer.render(scene, camera);
 }
 animate();
 
-// =========================================================
-// 14) RESIZE
-// =========================================================
 window.addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
