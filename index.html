@@ -206,11 +206,17 @@ const state = {
     modelBaseY: 0,
     walkCycle: 0,
     mixer: null,
+    actions: { idle: null, walk: null },
+    currentAction: null,
     position: new THREE.Vector3(0, 0, 0),
     velocity: new THREE.Vector3(),
     grounded: false,
     targetYaw: 0,
     spawnPoint: new THREE.Vector3(0, 1, 0),
+    
+    // Для фиксации таза
+    hipBone: null, 
+    hipRestQuat: new THREE.Quaternion(),
   },
   camera: { orbitYaw: 0, orbitPitch: 0.35, distance: 6, target: new THREE.Vector3() },
   map: null,
@@ -266,6 +272,17 @@ loader.load('shell.glb', (gltf) => {
     }
   });
 
+  // Ищем кость таза, чтобы потом её выпрямлять
+  model.traverse((node) => {
+    if (node.isBone) {
+      const name = node.name.toLowerCase();
+      if (name === 'hip' || name === 'hips' || name === 'pelvis') {
+        state.player.hipBone = node;
+        state.player.hipRestQuat.copy(node.quaternion);
+      }
+    }
+  });
+
   model.updateMatrixWorld(true);
   let box = new THREE.Box3().setFromObject(model);
   let size = box.getSize(new THREE.Vector3());
@@ -286,9 +303,60 @@ loader.load('shell.glb', (gltf) => {
   state.player.mesh = group;
   group.position.copy(state.player.position);
 
-  // ПРИНУДИТЕЛЬНО ОТКЛЮЧАЕМ АНИМАЦИИ PRISMA3D (ОНИ ЛОМАЮТ МОДЕЛЬ)
-  state.player.mixer = null; 
-  showError("Скелетная анимация отключена. Включено покачивание.", true);
+  // ВКЛЮЧАЕМ АНИМАЦИЮ ОБРАТНО, НО ЧИСТИМ ЕЁ
+  if (gltf.animations && gltf.animations.length > 0) {
+    const mixer = new THREE.AnimationMixer(model);
+    state.player.mixer = mixer;
+    const clips = gltf.animations;
+
+    if (clips.length === 1) {
+      const rawClip = clips[0];
+      const fps = 30; 
+      const totalFrames = Math.floor(rawClip.duration * fps);
+      const half = Math.floor(totalFrames / 2);
+      
+      let walkClip = THREE.AnimationUtils.subclip(rawClip, 'Walk', 0, half, fps);
+      let idleClip = THREE.AnimationUtils.subclip(rawClip, 'Idle', half, totalFrames, fps);
+      
+      // Очищаем анимацию от смещений
+      const cleanClip = (clip) => {
+        clip.tracks.forEach(t => {
+          if (t.name.endsWith('.position')) {
+            for (let i = 0; i < t.values.length; i += 3) {
+              t.values[i] = 0;     // X
+              t.values[i+2] = 0;   // Z
+            }
+          }
+        });
+      };
+      
+      cleanClip(walkClip);
+      cleanClip(idleClip);
+
+      state.player.actions.idle = mixer.clipAction(idleClip);
+      state.player.actions.walk = mixer.clipAction(walkClip);
+      state.player.actions.idle.play();
+      state.player.currentAction = state.player.actions.idle;
+      
+      showError("Анимация включена. Таз жестко зафиксирован.", true);
+    } else {
+      const findClip = (kw) => clips.find(c => c.name.toLowerCase().includes(kw));
+      let idleClip = findClip('idle') || findClip('stand') || clips[0];
+      let walkClip = findClip('walk') || findClip('run') || clips[1];
+
+      if (idleClip) {
+        state.player.actions.idle = mixer.clipAction(idleClip);
+        state.player.actions.idle.play();
+        state.player.currentAction = state.player.actions.idle;
+      }
+      if (walkClip) {
+        state.player.actions.walk = mixer.clipAction(walkClip);
+      }
+      showError("Загружены 2+ анимации. Таз зафиксирован.", true);
+    }
+  } else {
+    showError("В файле НЕТ анимаций! Включена псевдо-анимация.");
+  }
 
   checkLoaded();
 }, undefined, (err) => {
@@ -297,7 +365,7 @@ loader.load('shell.glb', (gltf) => {
 });
 
 // =========================================================
-// 6) ФИЗИКА И ПСЕВДО-АНИМАЦИЯ
+// 6) ФИЗИКА
 // =========================================================
 function findGroundHeight(x, z) {
   if (!state.map) return null;
@@ -383,7 +451,7 @@ function updatePhysics(dt) {
     p.grounded = false;
   }
 
-  // --- ВИЗУАЛ И ПСЕВДО-АНИМАЦИЯ ---
+  // --- ВИЗУАЛ ---
   if (p.mesh) {
     p.mesh.position.copy(p.position);
     if (isMoving) p.targetYaw = Math.atan2(moveDir.x, moveDir.z) + MODEL_FORWARD_OFFSET;
@@ -393,21 +461,39 @@ function updatePhysics(dt) {
     while (diff < -Math.PI) diff += Math.PI * 2;
     p.mesh.rotation.y += diff * Math.min(1, dt * 12);
 
-    // Псевдо-анимация (покачивание)
-    if (p.mesh.children.length > 0) {
+    // Псевдо-анимация, если НЕТ реальных анимаций
+    if (!p.mixer && p.mesh.children.length > 0) {
       const model = p.mesh.children[0];
       if (isMoving && p.grounded) {
         p.walkCycle += dt * 12; 
         model.position.y = p.modelBaseY + Math.abs(Math.sin(p.walkCycle)) * 0.08; 
-        model.rotation.z = Math.sin(p.walkCycle) * 0.06; 
-        model.rotation.x = 0.1; 
       } else {
         p.walkCycle = 0;
         model.position.y += (p.modelBaseY - model.position.y) * Math.min(1, dt * 10);
-        model.rotation.z += (0 - model.rotation.z) * Math.min(1, dt * 10);
-        model.rotation.x += (0 - model.rotation.x) * Math.min(1, dt * 10);
       }
     }
+  }
+}
+
+function updateAnimation(dt) {
+  const p = state.player;
+  if (!p.mixer) return; 
+  
+  const isMoving = Math.abs(state.input.forward) > 0.01 || Math.abs(state.input.right) > 0.01;
+
+  p.mixer.update(dt);
+
+  // КОСТЫЛЬ: Принудительно выпрямляем таз после каждого кадра анимации
+  if (p.hipBone) {
+    p.hipBone.quaternion.copy(p.hipRestQuat);
+  }
+
+  const targetAction = isMoving ? p.actions.walk : p.actions.idle;
+
+  if (targetAction && targetAction !== p.currentAction) {
+    if (p.currentAction) p.currentAction.fadeOut(0.2);
+    targetAction.reset().fadeIn(0.2).play();
+    p.currentAction = targetAction;
   }
 }
 
@@ -742,7 +828,7 @@ function animate() {
     updateFreeCamera(dt);
   } else {
     updatePhysics(dt);
-    // updateAnimation(dt); // Отключено
+    updateAnimation(dt);
     updateCamera(dt);
   }
 
