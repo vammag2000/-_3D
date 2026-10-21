@@ -123,20 +123,23 @@
 
 <script type="module">
 // =========================================================
-// 1) ОБРАБОТКА ОШИБОК (до всего остального)
+// 1) ОБРАБОТКА ОШИБОК
 // =========================================================
 const errorBox = document.getElementById('error-box');
 const errorLog = [];
 function showError(msg) {
   errorLog.push(String(msg));
-  errorBox.textContent = errorLog.slice(-8).join('\n\n');
+  errorBox.textContent = errorLog.slice(-6).join('\n\n');
   errorBox.style.display = 'block';
+  // Автоскрытие через 6 секунд, чтобы не мешало играть
+  clearTimeout(window._errTimeout);
+  window._errTimeout = setTimeout(() => { errorBox.style.display = 'none'; }, 6000);
   console.error(msg);
 }
 errorBox.addEventListener('click', () => errorBox.style.display = 'none');
 
 window.onerror = (msg, src, line, col, err) => {
-  showError(`ERR: ${msg}\n@ ${(src||'').split('/').pop()}:${line}:${col}\n${err?.stack || ''}`);
+  showError(`ERR: ${msg}\n@ ${(src||'').split('/').pop()}:${line}:${col}`);
 };
 window.addEventListener('unhandledrejection', (e) => {
   showError(`PROMISE: ${e.reason?.stack || e.reason}`);
@@ -158,20 +161,20 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 // 3) КОНФИГУРАЦИЯ
 // =========================================================
 const isDev = new URLSearchParams(location.search).get('dev') === '1';
-
-// Сюда вставить результат «Экспорт кода». localStorage имеет приоритет.
 const SAVED_OBJECTS = {};
 
-// Настройки персонажа / физики
+// --- НАСТРОЙКИ ПЕРСОНАЖА ---
 const PLAYER_HEIGHT      = 1.6;
 const PLAYER_RADIUS      = 0.35;
 const MOVE_SPEED         = 5.0;
 const GRAVITY            = 22.0;
 const JUMP_SPEED         = 8.0;
 const AIR_CONTROL        = 0.45;
-const FALL_RESPAWN_Y     = -20;   // если упал ниже — респавн
+const FALL_RESPAWN_Y     = -20;   
 // Если модель смотрит в -Z по умолчанию, поменяй на Math.PI
 const MODEL_FORWARD_OFFSET = 0;
+// Если персонаж всё ещё висит или провалился, измени это значение (например, -0.2 или 0.2)
+const PLAYER_Y_OFFSET      = 0.0; 
 
 // =========================================================
 // 4) THREE.JS БАЗА
@@ -182,18 +185,40 @@ scene.background = new THREE.Color(0x88bbdd);
 
 const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 500);
 
+// Включаем тени для мобилок (1024 разрешение — нормально для телефонов)
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
 container.appendChild(renderer.domElement);
 const canvas = renderer.domElement;
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x444455, 1.1));
-const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-sun.position.set(30, 50, 20);
+// Свет
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444455, 1.0);
+scene.add(hemiLight);
+
+const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+sun.position.set(20, 40, 20);
+sun.castShadow = true;
+sun.shadow.mapSize.width = 1024;
+sun.shadow.mapSize.height = 1024;
+sun.shadow.camera.left = -20;
+sun.shadow.camera.right = 20;
+sun.shadow.camera.top = 20;
+sun.shadow.camera.bottom = -20;
+sun.shadow.camera.near = 0.5;
+sun.shadow.camera.far = 100;
+sun.shadow.bias = -0.001;
 scene.add(sun);
-scene.add(new THREE.AmbientLight(0x404060, 0.6));
+
+// Сетка для дебага (видно, где y=0)
+if (isDev) {
+  const grid = new THREE.GridHelper(50, 50, 0xff0000, 0x555555);
+  grid.position.y = 0.02;
+  scene.add(grid);
+}
 
 // =========================================================
 // 5) СОСТОЯНИЕ
@@ -234,54 +259,66 @@ function checkLoaded() {
   loadedCount++;
   if (loadedCount >= totalLoads) loadingEl.classList.add('hidden');
 }
-function updateLoading(msg) { loadingEl.textContent = msg; }
 
-// ----- MAP (платформа/уровень) -----
-updateLoading('Загрузка карты (zov.glb)...');
+// ----- MAP (платформа zov.glb) -----
 loader.load('zov.glb', (gltf) => {
   const map = gltf.scene;
-  map.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
+  map.traverse(o => { 
+    if (o.isMesh) { 
+      o.castShadow = false; 
+      o.receiveShadow = true; // Карта принимает тени
+    } 
+  });
   scene.add(map);
   state.map = map;
 
-  // Присваиваем детерминированные ID для редактора
   let i = 0;
   map.traverse(o => { if (o.isMesh) o.userData.editId = 'obj_' + (i++); });
-
   applySavedObjects();
 
-  // Спавн игрока на землю
   const spawnY = findGroundHeight(0, 0);
   const sy = (spawnY !== null) ? spawnY : 0;
-  state.player.spawnPoint.set(0, sy + 0.05, 0);
+  state.player.spawnPoint.set(0, sy, 0);
   state.player.position.copy(state.player.spawnPoint);
   if (state.player.mesh) state.player.mesh.position.copy(state.player.position);
 
   checkLoaded();
 }, (p) => {
-  if (p.total) updateLoading(`Загрузка карты: ${Math.round(p.loaded / p.total * 100)}%`);
+  if (p.total) loadingEl.textContent = `Загрузка карты: ${Math.round(p.loaded / p.total * 100)}%`;
 }, (err) => {
   showError('Ошибка zov.glb: ' + (err?.message || err));
-  loadingEl.classList.add('hidden');
+  checkLoaded();
 });
 
-// ----- CHARACTER (персонаж) -----
-updateLoading('Загрузка персонажа (shell.glb)...');
+// ----- CHARACTER (персонаж shell.glb) -----
 loader.load('shell.glb', (gltf) => {
   const model = gltf.scene;
 
-  // Авто-масштаб до ~1.6 м по высоте
+  // Включаем тени для персонажа
+  model.traverse(child => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+      child.frustumCulled = false; // Чтобы не исчезал при анимации
+    }
+  });
+
+  // 1. Масштабируем до PLAYER_HEIGHT
+  model.updateMatrixWorld(true);
   let box = new THREE.Box3().setFromObject(model);
   let size = box.getSize(new THREE.Vector3());
   if (size.y > 0.01) {
     const s = PLAYER_HEIGHT / size.y;
-    if (Math.abs(s - 1) > 0.1) model.scale.setScalar(s);
+    model.scale.setScalar(s);
   }
 
-  // Опускаем так, чтобы ноги были в y=0
+  // 2. Центрируем по X и Z, и ставим ноги на Y=0
   model.updateMatrixWorld(true);
   box = new THREE.Box3().setFromObject(model);
-  model.position.y -= box.min.y;
+  const center = box.getCenter(new THREE.Vector3());
+  model.position.x = -center.x;
+  model.position.z = -center.z;
+  model.position.y = -box.min.y + PLAYER_Y_OFFSET;
 
   const group = new THREE.Group();
   group.add(model);
@@ -289,57 +326,49 @@ loader.load('shell.glb', (gltf) => {
   state.player.mesh = group;
   group.position.copy(state.player.position);
 
-  // Анимации
-  if (gltf.animations?.length) {
+  // 3. Анимации
+  if (gltf.animations && gltf.animations.length > 0) {
     const mixer = new THREE.AnimationMixer(model);
     state.player.mixer = mixer;
     const clips = gltf.animations;
 
-    // Вывод имён клипов в dev-режиме (для отладки)
-    if (isDev) {
-      showError('ANIMS: ' + clips.map(a => a.name).join(' | '));
-    }
+    // Выводим названия анимаций на экран, чтобы ты знал, как они называются
+    showError("Найдены анимации:\n" + clips.map(a => a.name).join("\n"));
 
-    const find = (kw) => clips.find(c => kw.some(k => c.name.toLowerCase().includes(k)));
-    const idleClip = find(['idle', 'stand', 'wait', 'rest']) || clips[0];
-    const walkClip = find(['walk', 'run', 'move', 'jog']) || clips[Math.min(1, clips.length - 1)];
+    // Ищем idle и walk (без учета регистра)
+    const findClip = (kw) => clips.find(c => c.name.toLowerCase().includes(kw));
+    const idleClip = findClip('idle') || findClip('stand') || clips[0];
+    const walkClip = findClip('walk') || findClip('run') || clips[1] || clips[0];
 
     if (idleClip) {
       state.player.actions.idle = mixer.clipAction(idleClip);
       state.player.actions.idle.play();
       state.player.currentAction = state.player.actions.idle;
     }
-    if (walkClip) state.player.actions.walk = mixer.clipAction(walkClip);
+    if (walkClip) {
+      state.player.actions.walk = mixer.clipAction(walkClip);
+    }
+  } else {
+    showError("В файле shell.glb НЕТ анимаций! (Только статичная модель)");
   }
 
   checkLoaded();
 }, (p) => {
-  if (p.total) updateLoading(`Загрузка персонажа: ${Math.round(p.loaded / p.total * 100)}%`);
+  if (p.total) loadingEl.textContent = `Загрузка персонажа: ${Math.round(p.loaded / p.total * 100)}%`;
 }, (err) => {
   showError('Ошибка shell.glb: ' + (err?.message || err));
-  // Fallback-капсула, чтобы игра всё-таки запустилась
-  const g = new THREE.Group();
-  const cap = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.4, 0.8, 4, 8),
-    new THREE.MeshStandardMaterial({ color: 0x44aaff })
-  );
-  cap.position.y = 0.8;
-  g.add(cap);
-  g.position.copy(state.player.position);
-  scene.add(g);
-  state.player.mesh = g;
   checkLoaded();
 });
 
 // =========================================================
 // 7) ФИЗИКА
 // =========================================================
-// Возвращает Y земли или null, если под точкой ничего нет
 function findGroundHeight(x, z) {
   if (!state.map) return null;
   raycaster.set(new THREE.Vector3(x, 200, z), DOWN);
   raycaster.far = 500;
-  const hits = raycaster.intersectObject(state.map, true);
+  // ВАЖНО: Игнорируем невидимые объекты, чтобы не висеть в воздухе
+  const hits = raycaster.intersectObject(state.map, true).filter(h => h.object.visible && h.object.isMesh);
   return hits.length ? hits[0].point.y : null;
 }
 
@@ -370,7 +399,9 @@ function updatePhysics(dt) {
     const origin = p.position.clone().add(new THREE.Vector3(0, PLAYER_HEIGHT * 0.5, 0));
     raycaster.set(origin, delta.clone().normalize());
     raycaster.far = PLAYER_RADIUS + delta.length();
-    const hits = raycaster.intersectObject(state.map, true).filter(h =>
+    
+    const hits = raycaster.intersectObject(state.map, true).filter(h => 
+      h.object.visible && h.object.isMesh &&
       h.point.y > p.position.y + 0.25 && h.point.y < p.position.y + PLAYER_HEIGHT * 0.9
     );
 
@@ -378,11 +409,11 @@ function updatePhysics(dt) {
       p.position.x += delta.x;
       p.position.z += delta.z;
     } else {
-      // Скольжение по осям
       if (Math.abs(delta.x) > 1e-4) {
         raycaster.set(origin, new THREE.Vector3(Math.sign(delta.x), 0, 0));
         raycaster.far = Math.abs(delta.x) + PLAYER_RADIUS;
-        const xh = raycaster.intersectObject(state.map, true).filter(h =>
+        const xh = raycaster.intersectObject(state.map, true).filter(h => 
+          h.object.visible && h.object.isMesh &&
           h.point.y > p.position.y + 0.25 && h.point.y < p.position.y + PLAYER_HEIGHT * 0.9
         );
         if (xh.length === 0) p.position.x += delta.x;
@@ -390,7 +421,8 @@ function updatePhysics(dt) {
       if (Math.abs(delta.z) > 1e-4) {
         raycaster.set(origin, new THREE.Vector3(0, 0, Math.sign(delta.z)));
         raycaster.far = Math.abs(delta.z) + PLAYER_RADIUS;
-        const zh = raycaster.intersectObject(state.map, true).filter(h =>
+        const zh = raycaster.intersectObject(state.map, true).filter(h => 
+          h.object.visible && h.object.isMesh &&
           h.point.y > p.position.y + 0.25 && h.point.y < p.position.y + PLAYER_HEIGHT * 0.9
         );
         if (zh.length === 0) p.position.z += delta.z;
@@ -412,7 +444,7 @@ function updatePhysics(dt) {
     p.grounded = false;
   }
 
-  // Прыжок (с буфером ввода)
+  // Прыжок
   if (state.input.jumpBuffer > 0) {
     state.input.jumpBuffer -= dt;
     if (p.grounded) {
@@ -422,7 +454,7 @@ function updatePhysics(dt) {
     }
   }
 
-  // Респавн если упал с платформы
+  // Респавн при падении
   if (p.position.y < FALL_RESPAWN_Y) {
     p.position.copy(p.spawnPoint);
     p.velocity.set(0, 0, 0);
@@ -447,17 +479,19 @@ function updateAnimation(dt) {
   const p = state.player;
   if (!p.mixer) return;
   p.mixer.update(dt);
-  const moving = Math.abs(state.input.forward) > 0.01 || Math.abs(state.input.right) > 0.01;
-  const target = moving ? p.actions.walk : p.actions.idle;
+
+  const isMoving = Math.abs(state.input.forward) > 0.01 || Math.abs(state.input.right) > 0.01;
+  const target = isMoving ? p.actions.walk : p.actions.idle;
+
   if (target && target !== p.currentAction) {
-    if (p.currentAction) p.currentAction.fadeOut(0.15);
-    target.reset().fadeIn(0.15).play();
+    if (p.currentAction) p.currentAction.fadeOut(0.2);
+    target.reset().fadeIn(0.2).play();
     p.currentAction = target;
   }
 }
 
 // =========================================================
-// 9) КАМЕРА ОТ ТРЕТЬЕГО ЛИЦА
+// 9) КАМЕРА
 // =========================================================
 function updateCamera(dt) {
   const cam = state.camera;
@@ -478,7 +512,7 @@ function updateCamera(dt) {
 }
 
 // =========================================================
-// 10) КНОПКИ / D-PAD / JUMP
+// 10) D-PAD / JUMP
 // =========================================================
 const dpad = { up: false, down: false, left: false, right: false };
 
@@ -505,7 +539,7 @@ function updateInputFromButtons() {
 }
 
 // =========================================================
-// 11) ТАЧ-УПРАВЛЕНИЕ КАМЕРОЙ (свайп + пинч + tap)
+// 11) ТАЧ-УПРАВЛЕНИЕ (Свайп + Пинч + Тап)
 // =========================================================
 const activeTouches = new Map();
 let pinchState = { active: false, startDist: 0, startZoom: 1 };
@@ -579,7 +613,7 @@ canvas.addEventListener('touchcancel', (e) => {
 // 12) DEV-РЕЖИМ
 // =========================================================
 const dev = {
-  mode: 'play', // 'play' | 'coords' | 'editor'
+  mode: 'play',
   freeCam: { pos: new THREE.Vector3(), yaw: 0, pitch: 0 },
   transformControls: null,
   selectedObject: null,
@@ -676,7 +710,6 @@ function showExportDialog(code) {
   document.body.appendChild(close);
 }
 
-// -------------------- Вспомогательные функции редактора --------------------
 function collectObjectTransforms() {
   const out = {};
   if (!state.map) return out;
@@ -713,7 +746,6 @@ function applySavedObjects() {
   });
 }
 
-// Авто-установка объекта на землю (по Bounding Box)
 function snapObjectToGround(obj) {
   if (!state.map || !obj) return;
   obj.updateMatrixWorld(true);
@@ -721,10 +753,9 @@ function snapObjectToGround(obj) {
   if (box.isEmpty()) return;
 
   const center = box.getCenter(new THREE.Vector3());
-
   raycaster.set(new THREE.Vector3(center.x, box.max.y + 5, center.z), DOWN);
   raycaster.far = 1000;
-  const hits = raycaster.intersectObject(state.map, true).filter(h => !isDescendantOf(h.object, obj));
+  const hits = raycaster.intersectObject(state.map, true).filter(h => !isDescendantOf(h.object, obj) && h.object.visible);
 
   if (hits.length) {
     const groundY = hits[0].point.y;
@@ -733,12 +764,8 @@ function snapObjectToGround(obj) {
   }
 }
 
-// -------------------- Тап по экрану --------------------
 function handleTap(x, y) {
-  const ndc = new THREE.Vector2(
-    (x / innerWidth) * 2 - 1,
-    -(y / innerHeight) * 2 + 1
-  );
+  const ndc = new THREE.Vector2((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
 
   if (dev.mode === 'coords') {
     raycaster.setFromCamera(ndc, camera);
@@ -765,7 +792,6 @@ function handleTap(x, y) {
   }
 }
 
-// -------------------- Полёт камеры в режиме «Координаты» --------------------
 function updateFreeCamera(dt) {
   const fc = dev.freeCam;
   const fwd = new THREE.Vector3(
@@ -812,6 +838,11 @@ function animate() {
   if (dev.transformControls) dev.transformControls.update();
 
   if (isDev) {
+    // Обновляем тень за игроком (чтобы солнце следовало за персонажем)
+    sun.position.set(state.player.position.x + 20, state.player.position.y + 40, state.player.position.z + 20);
+    sun.target.position.copy(state.player.position);
+    sun.target.updateMatrixWorld();
+
     devInfoEl.textContent =
       `FPS: ${fps}\n` +
       `Mode: ${dev.mode}\n` +
