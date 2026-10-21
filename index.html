@@ -132,7 +132,7 @@ function showError(msg, isGood = false) {
   errorBox.style.background = isGood ? 'rgba(0, 150, 0, 0.92)' : 'rgba(190, 0, 0, 0.92)';
   errorBox.style.display = 'block';
   clearTimeout(window._errTimeout);
-  window._errTimeout = setTimeout(() => { errorBox.style.display = 'none'; }, isGood ? 8000 : 5000);
+  window._errTimeout = setTimeout(() => { errorBox.style.display = 'none'; }, isGood ? 8000 : 7000);
   console.log(msg);
 }
 
@@ -291,19 +291,19 @@ loader.load('shell.glb', (gltf) => {
     const mixer = new THREE.AnimationMixer(model);
     state.player.mixer = mixer;
     const clips = gltf.animations;
-    
-    showError("Найдены анимации:\n" + clips.map(a => a.name).join(" | "), true);
 
     const findClip = (kw) => clips.find(c => c.name.toLowerCase().includes(kw));
     let idleClip = findClip('idle') || clips[0];
     let walkClip = findClip('walk') || findClip('run') || clips[1];
 
-    // Защита: если анимация всего одна, используем её только для Idle,
-    // чтобы персонаж не "слайдил" при движении.
+    // Проверяем количество анимаций
     if (clips.length === 1) {
       idleClip = clips[0];
       walkClip = null;
-      showError("ВНИМАНИЕ: В файле только 1 анимация. Для ходьбы нужна вторая (Walk).", false);
+      // Показываем имя единственной анимации в предупреждении
+      showError(`ВНИМАНИЕ: В файле только 1 анимация ("${clips[0].name}").\nДля ходьбы нужна вторая (Walk).`, false);
+    } else {
+      showError("Найдены анимации:\n" + clips.map(a => a.name).join(" | "), true);
     }
 
     if (idleClip) {
@@ -446,7 +446,6 @@ function updateAnimation(dt) {
 
   const isMoving = Math.abs(state.input.forward) > 0.01 || Math.abs(state.input.right) > 0.01;
   
-  // Если у нас нет отдельной Walk анимации, мы просто не переключаемся
   if (!p.actions.walk) return;
 
   const target = isMoving ? p.actions.walk : p.actions.idle;
