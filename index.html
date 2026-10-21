@@ -204,6 +204,7 @@ const state = {
   player: {
     mesh: null,
     modelBaseY: 0,
+    modelCenter: new THREE.Vector3(),
     walkCycle: 0,
     mixer: null,
     actions: { idle: null, walk: null },
@@ -276,6 +277,8 @@ loader.load('shell.glb', (gltf) => {
   model.updateMatrixWorld(true);
   box = new THREE.Box3().setFromObject(model);
   const center = box.getCenter(new THREE.Vector3());
+  
+  state.player.modelCenter.copy(center); // Запоминаем центр
   model.position.x = -center.x;
   model.position.z = -center.z;
   model.position.y = -box.min.y + PLAYER_Y_OFFSET;
@@ -287,34 +290,47 @@ loader.load('shell.glb', (gltf) => {
   state.player.mesh = group;
   group.position.copy(state.player.position);
 
-  // ПРОВЕРКА АНИМАЦИЙ
-  if (gltf.animations && gltf.animations.length > 1) {
-    // Если анимаций ДВЕ и больше - включаем реальные анимации
+  // ОБХОД ОГРАНИЧЕНИЯ PRISMA3D
+  if (gltf.animations && gltf.animations.length > 0) {
     const mixer = new THREE.AnimationMixer(model);
     state.player.mixer = mixer;
     const clips = gltf.animations;
 
-    const findClip = (kw) => clips.find(c => c.name.toLowerCase().includes(kw));
-    let idleClip = findClip('idle') || findClip('stand') || clips[0];
-    let walkClip = findClip('walk') || findClip('run') || clips[1];
+    // Если в файле только одна анимация (Prisma3D объединила всё в одну)
+    if (clips.length === 1) {
+      const clip = clips[0];
+      
+      // Вырезаем смещение по X и Z, чтобы убрать телепортацию (Root Motion)
+      clip.tracks.forEach(track => {
+        if (track.name.endsWith('.position')) {
+          for (let i = 0; i < track.values.length; i += 3) {
+            track.values[i] = 0;       // X
+            track.values[i + 2] = 0;   // Z
+          }
+        }
+      });
 
-    if (idleClip) {
-      state.player.actions.idle = mixer.clipAction(idleClip);
-      state.player.actions.idle.play();
-      state.player.currentAction = state.player.actions.idle;
-    }
-    if (walkClip) {
-      state.player.actions.walk = mixer.clipAction(walkClip);
-    }
-    showError("Загружены реальные анимации: " + clips.map(a=>a.name).join(", "), true);
+      state.player.actions.walk = mixer.clipAction(clip);
+      showError("Успешно! Анимация (" + clip.name + ") привязана к ходьбе.", true);
+    } 
+    // Если анимаций две и больше (нормальный экспорт)
+    else {
+      const findClip = (kw) => clips.find(c => c.name.toLowerCase().includes(kw));
+      let idleClip = findClip('idle') || findClip('stand') || clips[0];
+      let walkClip = findClip('walk') || findClip('run') || clips[1];
 
-  } else if (gltf.animations && gltf.animations.length === 1) {
-    // Если анимация ОДНА - отключаем её, чтобы не было дерганья (Root Motion), включаем псевдо-анимацию
-    state.player.mixer = null;
-    showError("В файле только 1 анимация (" + gltf.animations[0].name + ").\nОтключена, включена псевдо-анимация.", false);
+      if (idleClip) {
+        state.player.actions.idle = mixer.clipAction(idleClip);
+        state.player.actions.idle.play();
+        state.player.currentAction = state.player.actions.idle;
+      }
+      if (walkClip) {
+        state.player.actions.walk = mixer.clipAction(walkClip);
+      }
+      showError("Загружены 2+ анимации.", true);
+    }
   } else {
-    state.player.mixer = null;
-    showError("В файле НЕТ анимаций. Включена псевдо-анимация.");
+    showError("В файле НЕТ анимаций! Включена псевдо-анимация.");
   }
 
   checkLoaded();
@@ -324,7 +340,7 @@ loader.load('shell.glb', (gltf) => {
 });
 
 // =========================================================
-// 6) ФИЗИКА И ПСЕВДО-АНИМАЦИЯ
+// 6) ФИЗИКА
 // =========================================================
 function findGroundHeight(x, z) {
   if (!state.map) return null;
@@ -410,7 +426,7 @@ function updatePhysics(dt) {
     p.grounded = false;
   }
 
-  // --- ВИЗУАЛ И ПСЕВДО-АНИМАЦИЯ ---
+  // --- ВИЗУАЛ ---
   if (p.mesh) {
     p.mesh.position.copy(p.position);
     if (isMoving) p.targetYaw = Math.atan2(moveDir.x, moveDir.z) + MODEL_FORWARD_OFFSET;
@@ -420,7 +436,7 @@ function updatePhysics(dt) {
     while (diff < -Math.PI) diff += Math.PI * 2;
     p.mesh.rotation.y += diff * Math.min(1, dt * 12);
 
-    // Псевдо-анимация, если НЕТ реального mixer
+    // Псевдо-анимация, если НЕТ реальных анимаций
     if (!p.mixer && p.mesh.children.length > 0) {
       const model = p.mesh.children[0];
       if (isMoving && p.grounded) {
@@ -445,14 +461,13 @@ function updateAnimation(dt) {
 
   const isMoving = Math.abs(state.input.forward) > 0.01 || Math.abs(state.input.right) > 0.01;
   
-  if (!p.actions.walk) return;
-
-  const target = isMoving ? p.actions.walk : p.actions.idle;
-
-  if (target && target !== p.currentAction) {
-    if (p.currentAction) p.currentAction.fadeOut(0.2);
-    target.reset().fadeIn(0.2).play();
-    p.currentAction = target;
+  // Если у нас есть Walk (даже если она одна)
+  if (p.actions.walk) {
+    if (isMoving && !p.actions.walk.isRunning()) {
+      p.actions.walk.reset().fadeIn(0.2).play();
+    } else if (!isMoving && p.actions.walk.isRunning()) {
+      p.actions.walk.fadeOut(0.2);
+    }
   }
 }
 
@@ -499,7 +514,7 @@ function updateInputFromButtons() {
   state.input.right   = (dpad.right ? 1 : 0) - (dpad.left ? 1 : 0);
 }
 
-// Тач-управление (Свайп, Пинч, Тап)
+// Тач-управление
 const activeTouches = new Map();
 let pinchState = { active: false, startDist: 0, startZoom: 1 };
 let tapInfo = { active: false, startTime: 0, startX: 0, startY: 0, moved: false };
@@ -507,7 +522,6 @@ let tapInfo = { active: false, startTime: 0, startX: 0, startY: 0, moved: false 
 canvas.addEventListener('touchstart', (e) => {
   if (dev.transformControls && dev.transformControls.dragging) return;
   for (const t of e.changedTouches) activeTouches.set(t.identifier, { x: t.clientX, y: t.clientY });
-
   if (activeTouches.size === 1) {
     const t = e.changedTouches[0];
     tapInfo = { active: true, startTime: Date.now(), startX: t.clientX, startY: t.clientY, moved: false };
@@ -528,7 +542,6 @@ canvas.addEventListener('touchmove', (e) => {
     if (!prev) continue;
     const dx = t.clientX - prev.x;
     const dy = t.clientY - prev.y;
-
     if (activeTouches.size === 1) {
       if (dev.mode === 'coords') {
         dev.freeCam.yaw   -= dx * 0.006;
@@ -554,7 +567,6 @@ canvas.addEventListener('touchend', (e) => {
   if (dev.transformControls && dev.transformControls.dragging) return;
   for (const t of e.changedTouches) activeTouches.delete(t.identifier);
   if (activeTouches.size < 2) pinchState.active = false;
-
   if (tapInfo.active && !tapInfo.moved && Date.now() - tapInfo.startTime < 350 && activeTouches.size === 0) {
     const t = e.changedTouches[0];
     handleTap(t.clientX, t.clientY);
