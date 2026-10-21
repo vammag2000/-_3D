@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>3D Game</title>
+<title>3D Rolling Ball</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: -apple-system, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -89,7 +89,7 @@
 
 <div id="canvas-container"></div>
 <div id="error-box"></div>
-<div id="loading">Загрузка игры...</div>
+<div id="loading">Загрузка...</div>
 <div id="dev-info"></div>
 <div id="coord-popup"></div>
 
@@ -149,15 +149,14 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 const isDev = new URLSearchParams(location.search).get('dev') === '1';
 const SAVED_OBJECTS = {};
 
-const PLAYER_HEIGHT      = 1.6;
-const PLAYER_RADIUS      = 0.35;
-const MOVE_SPEED         = 4.0; 
-const GRAVITY            = 22.0;
-const JUMP_SPEED         = 8.0;
-const AIR_CONTROL        = 0.45;
-const FALL_RESPAWN_Y     = -20;   
-const MODEL_FORWARD_OFFSET = 0;
-const PLAYER_Y_OFFSET      = 0.0; 
+// --- ФИЗИЧЕСКИЕ КОНСТАНТЫ (ГИПЕРРЕАЛИЗМ) ---
+const MAX_SPEED          = 7.0;   // Максимальная скорость шара
+const ACCELERATION       = 25.0;  // Ускорение при нажатии кнопки
+const FRICTION           = 3.0;   // Трение (как быстро шар останавливается)
+const GRAVITY            = 22.0;  // Гравитация
+const JUMP_SPEED         = 8.0;   // Сила прыжка
+const FALL_RESPAWN_Y     = -20;   // Высота падения для респавна
+const WALL_BOUNCE        = 0.2;   // Упругость стен (0.2 = 20% отскока)
 
 // =========================================================
 // 3) THREE.JS БАЗА
@@ -203,24 +202,20 @@ if (isDev) {
 const state = {
   player: {
     mesh: null,
-    modelBaseY: 0,
-    walkCycle: 0,
-    mixer: null,
-    actions: { idle: null, walk: null },
-    currentAction: null,
+    radius: 0.5, // Радиус определится при загрузке
     position: new THREE.Vector3(0, 0, 0),
     velocity: new THREE.Vector3(),
     grounded: false,
-    targetYaw: 0,
     spawnPoint: new THREE.Vector3(0, 1, 0),
   },
-  camera: { orbitYaw: 0, orbitPitch: 0.35, distance: 6, target: new THREE.Vector3() },
+  camera: { orbitYaw: 0, orbitPitch: 0.35, distance: 8, target: new THREE.Vector3() },
   map: null,
   input: { forward: 0, right: 0, jumpBuffer: 0 },
 };
 
 const raycaster = new THREE.Raycaster();
 const DOWN = new THREE.Vector3(0, -1, 0);
+const UP = new THREE.Vector3(0, 1, 0);
 
 // =========================================================
 // 5) ЗАГРУЗКА
@@ -247,7 +242,9 @@ loader.load('zov.glb', (gltf) => {
 
   const spawnY = findGroundHeight(0, 0);
   const sy = (spawnY !== null) ? spawnY : 0;
-  state.player.spawnPoint.set(0, sy, 0);
+  
+  // Ставим шар на землю (Y = высота земли + радиус шара)
+  state.player.spawnPoint.set(0, sy + state.player.radius, 0);
   state.player.position.copy(state.player.spawnPoint);
   if (state.player.mesh) state.player.mesh.position.copy(state.player.position);
 
@@ -257,7 +254,7 @@ loader.load('zov.glb', (gltf) => {
   checkLoaded();
 });
 
-// ----- CHARACTER -----
+// ----- CHARACTER (СФЕРА) -----
 loader.load('shell.glb', (gltf) => {
   const model = gltf.scene;
   model.traverse(child => {
@@ -268,86 +265,27 @@ loader.load('shell.glb', (gltf) => {
     }
   });
 
-  // ЗАПОМИНАЕМ ПРЯМУЮ ПОЗУ ВСЕХ КОСТЕЙ
-  model.traverse((node) => {
-    if (node.isBone) {
-      node.userData.restQuat = node.quaternion.clone();
-    }
-  });
-
+  // 1. Вычисляем габариты и радиус
   model.updateMatrixWorld(true);
   let box = new THREE.Box3().setFromObject(model);
   let size = box.getSize(new THREE.Vector3());
-  if (size.y > 0.01) model.scale.setScalar(PLAYER_HEIGHT / size.y);
+  state.player.radius = size.y / 2.0; // Берем половину высоты как радиус
 
-  model.updateMatrixWorld(true);
-  box = new THREE.Box3().setFromObject(model);
+  // 2. Центрируем модель строго по центру её группы
   const center = box.getCenter(new THREE.Vector3());
-  
-  model.position.x = -center.x;
-  model.position.z = -center.z;
-  model.position.y = -box.min.y + PLAYER_Y_OFFSET;
-  state.player.modelBaseY = model.position.y; 
+  model.position.sub(center); // Сдвигаем меш так, чтобы его центр был в (0,0,0)
 
+  // 3. Создаем группу для шара
   const group = new THREE.Group();
   group.add(model);
   scene.add(group);
   state.player.mesh = group;
+
+  // Обновляем точку спавна с учетом радиуса
+  state.player.position.y = findGroundHeight(0, 0) + state.player.radius;
   group.position.copy(state.player.position);
 
-  if (gltf.animations && gltf.animations.length > 0) {
-    const mixer = new THREE.AnimationMixer(model);
-    state.player.mixer = mixer;
-    const clips = gltf.animations;
-
-    if (clips.length === 1) {
-      const rawClip = clips[0];
-      const fps = 30; 
-      const totalFrames = Math.floor(rawClip.duration * fps);
-      const half = Math.floor(totalFrames / 2);
-      
-      let walkClip = THREE.AnimationUtils.subclip(rawClip, 'Walk', 0, half, fps);
-      let idleClip = THREE.AnimationUtils.subclip(rawClip, 'Idle', half, totalFrames, fps);
-      
-      // Обнуляем смещение по X и Z (убираем телепортацию)
-      const cleanClip = (clip) => {
-        clip.tracks.forEach(t => {
-          if (t.name.endsWith('.position')) {
-            for (let i = 0; i < t.values.length; i += 3) {
-              t.values[i] = 0;     // X
-              t.values[i+2] = 0;   // Z
-            }
-          }
-        });
-      };
-      
-      cleanClip(walkClip);
-      cleanClip(idleClip);
-
-      state.player.actions.idle = mixer.clipAction(idleClip);
-      state.player.actions.walk = mixer.clipAction(walkClip);
-      state.player.actions.idle.play();
-      state.player.currentAction = state.player.actions.idle;
-      
-      showError("Анимация загружена. Торс зафиксирован.", true);
-    } else {
-      const findClip = (kw) => clips.find(c => c.name.toLowerCase().includes(kw));
-      let idleClip = findClip('idle') || findClip('stand') || clips[0];
-      let walkClip = findClip('walk') || findClip('run') || clips[1];
-
-      if (idleClip) {
-        state.player.actions.idle = mixer.clipAction(idleClip);
-        state.player.actions.idle.play();
-        state.player.currentAction = state.player.actions.idle;
-      }
-      if (walkClip) {
-        state.player.actions.walk = mixer.clipAction(walkClip);
-      }
-      showError("Загружены 2+ анимации.", true);
-    }
-  } else {
-    showError("В файле НЕТ анимаций! Включена псевдо-анимация.");
-  }
+  showError(`Сфера загружена. Радиус: ${state.player.radius.toFixed(2)}`, true);
 
   checkLoaded();
 }, undefined, (err) => {
@@ -356,7 +294,7 @@ loader.load('shell.glb', (gltf) => {
 });
 
 // =========================================================
-// 6) ФИЗИКА
+// 6) ФИЗИКА КАЧЕНИЯ И КОЛЛИЗИИ
 // =========================================================
 function findGroundHeight(x, z) {
   if (!state.map) return null;
@@ -376,57 +314,85 @@ function updatePhysics(dt) {
   const p = state.player;
   const cam = state.camera;
 
+  // 1. Векторы направления относительно камеры
   const forward = new THREE.Vector3(-Math.sin(cam.orbitYaw), 0, -Math.cos(cam.orbitYaw));
   const right   = new THREE.Vector3( Math.cos(cam.orbitYaw), 0, -Math.sin(cam.orbitYaw));
 
-  const moveDir = new THREE.Vector3();
-  moveDir.addScaledVector(forward, state.input.forward);
-  moveDir.addScaledVector(right,   state.input.right);
-  const isMoving = moveDir.lengthSq() > 0.0001;
-  if (isMoving) moveDir.normalize();
+  // 2. Вектор желаемого движения (на основе нажатий)
+  const inputDir = new THREE.Vector3();
+  inputDir.addScaledVector(forward, state.input.forward);
+  inputDir.addScaledVector(right,   state.input.right);
+  const hasInput = inputDir.lengthSq() > 0.0001;
+  if (hasInput) inputDir.normalize();
 
-  const control = p.grounded ? 1 : AIR_CONTROL;
-  const delta = moveDir.clone().multiplyScalar(MOVE_SPEED * control * dt);
+  // 3. УСКОРЕНИЕ И ТРЕНИЕ (Гиперреализм)
+  if (hasInput) {
+    // Ускоряем шар в сторону нажатия
+    p.velocity.x += inputDir.x * ACCELERATION * dt;
+    p.velocity.z += inputDir.z * ACCELERATION * dt;
 
-  if (isMoving && state.map && delta.lengthSq() > 0) {
-    const origin = p.position.clone().add(new THREE.Vector3(0, PLAYER_HEIGHT * 0.5, 0));
-    raycaster.set(origin, delta.clone().normalize());
-    raycaster.far = PLAYER_RADIUS + delta.length();
+    // Ограничиваем максимальную скорость
+    const horizSpeed = Math.hypot(p.velocity.x, p.velocity.z);
+    if (horizSpeed > MAX_SPEED) {
+      p.velocity.x = (p.velocity.x / horizSpeed) * MAX_SPEED;
+      p.velocity.z = (p.velocity.z / horizSpeed) * MAX_SPEED;
+    }
+  } else {
+    // Трение (если нет ввода)
+    const frictionFactor = Math.max(0, 1 - FRICTION * dt);
+    p.velocity.x *= frictionFactor;
+    p.velocity.z *= frictionFactor;
     
-    const hits = raycaster.intersectObject(state.map, true).filter(h => 
-      h.object.visible && h.object.isMesh &&
-      h.point.y > p.position.y + 0.25 && h.point.y < p.position.y + PLAYER_HEIGHT * 0.9
-    );
+    // Полная остановка при очень малой скорости
+    if (Math.hypot(p.velocity.x, p.velocity.z) < 0.1) {
+      p.velocity.x = 0;
+      p.velocity.z = 0;
+    }
+  }
 
-    if (hits.length === 0) {
-      p.position.x += delta.x;
-      p.position.z += delta.z;
-    } else {
-      if (Math.abs(delta.x) > 1e-4) {
-        raycaster.set(origin, new THREE.Vector3(Math.sign(delta.x), 0, 0));
-        raycaster.far = Math.abs(delta.x) + PLAYER_RADIUS;
-        if (raycaster.intersectObject(state.map, true).filter(h => h.object.visible && h.point.y > p.position.y + 0.25 && h.point.y < p.position.y + PLAYER_HEIGHT * 0.9).length === 0) p.position.x += delta.x;
+  // 4. Движение по осям с проверкой коллизий (стены)
+  const deltaX = p.velocity.x * dt;
+  const deltaZ = p.velocity.z * dt;
+  
+  if (state.map) {
+    const origin = p.position.clone().add(new THREE.Vector3(0, p.radius, 0));
+    
+    // Проверка по X
+    if (Math.abs(deltaX) > 1e-5) {
+      raycaster.set(origin, new THREE.Vector3(Math.sign(deltaX), 0, 0));
+      raycaster.far = Math.abs(deltaX) + p.radius;
+      const hits = raycaster.intersectObject(state.map, true).filter(h => 
+        h.object.visible && h.object.isMesh &&
+        h.point.y > p.position.y && h.point.y < p.position.y + p.radius * 1.5
+      );
+      
+      if (hits.length > 0) {
+        p.velocity.x *= -WALL_BOUNCE; // Отскок от стены
+      } else {
+        p.position.x += deltaX;
       }
-      if (Math.abs(delta.z) > 1e-4) {
-        raycaster.set(origin, new THREE.Vector3(0, 0, Math.sign(delta.z)));
-        raycaster.far = Math.abs(delta.z) + PLAYER_RADIUS;
-        if (raycaster.intersectObject(state.map, true).filter(h => h.object.visible && h.point.y > p.position.y + 0.25 && h.point.y < p.position.y + PLAYER_HEIGHT * 0.9).length === 0) p.position.z += delta.z;
+    }
+
+    // Проверка по Z
+    if (Math.abs(deltaZ) > 1e-5) {
+      raycaster.set(origin, new THREE.Vector3(0, 0, Math.sign(deltaZ)));
+      raycaster.far = Math.abs(deltaZ) + p.radius;
+      const hits = raycaster.intersectObject(state.map, true).filter(h => 
+        h.object.visible && h.object.isMesh &&
+        h.point.y > p.position.y && h.point.y < p.position.y + p.radius * 1.5
+      );
+      
+      if (hits.length > 0) {
+        p.velocity.z *= -WALL_BOUNCE; // Отскок от стены
+      } else {
+        p.position.z += deltaZ;
       }
     }
   }
 
+  // 5. Гравитация и Прыжок
   p.velocity.y -= GRAVITY * dt;
-  p.position.y += p.velocity.y * dt;
-
-  const groundY = findGroundHeight(p.position.x, p.position.z);
-  if (groundY !== null && p.position.y <= groundY) {
-    p.position.y = groundY;
-    p.velocity.y = 0;
-    p.grounded = true;
-  } else {
-    p.grounded = false;
-  }
-
+  
   if (state.input.jumpBuffer > 0) {
     state.input.jumpBuffer -= dt;
     if (p.grounded) {
@@ -436,73 +402,57 @@ function updatePhysics(dt) {
     }
   }
 
+  p.position.y += p.velocity.y * dt;
+
+  // 6. Проверка земли
+  const groundY = findGroundHeight(p.position.x, p.position.z);
+  if (groundY !== null && p.position.y - p.radius <= groundY) {
+    p.position.y = groundY + p.radius; // Ставим ровно на землю
+    p.velocity.y = 0;
+    p.grounded = true;
+  } else {
+    p.grounded = false;
+  }
+
+  // 7. Респавн при падении
   if (p.position.y < FALL_RESPAWN_Y) {
     p.position.copy(p.spawnPoint);
     p.velocity.set(0, 0, 0);
     p.grounded = false;
   }
 
-  // --- ВИЗУАЛ ---
+  // 8. ВРАЩЕНИЕ ШАРА (Реалистичное качение)
   if (p.mesh) {
     p.mesh.position.copy(p.position);
-    if (isMoving) p.targetYaw = Math.atan2(moveDir.x, moveDir.z) + MODEL_FORWARD_OFFSET;
-    
-    let diff = p.targetYaw - p.mesh.rotation.y;
-    while (diff >  Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-    p.mesh.rotation.y += diff * Math.min(1, dt * 12);
 
-    // Псевдо-анимация, если НЕТ реальных анимаций
-    if (!p.mixer && p.mesh.children.length > 0) {
-      const model = p.mesh.children[0];
-      if (isMoving && p.grounded) {
-        p.walkCycle += dt * 12; 
-        model.position.y = p.modelBaseY + Math.abs(Math.sin(p.walkCycle)) * 0.08; 
-      } else {
-        p.walkCycle = 0;
-        model.position.y += (p.modelBaseY - model.position.y) * Math.min(1, dt * 10);
-      }
+    // Вычисляем пройденный путь за этот кадр
+    const distX = p.velocity.x * dt;
+    const distZ = p.velocity.z * dt;
+    const distance = Math.hypot(distX, distZ);
+
+    if (distance > 0.0001) {
+      // Направление движения
+      const moveDir = new THREE.Vector3(distX, 0, distZ).normalize();
+      
+      // Ось вращения = перпендикуляр к направлению движения (Векторное произведение Вверх x Направление)
+      const rotAxis = new THREE.Vector3().crossVectors(UP, moveDir).normalize();
+      
+      // Угол поворота = Пройденный путь / Радиус
+      const angle = distance / p.radius;
+      
+      // Применяем поворот (пре-мультипликация для локального вращения)
+      const q = new THREE.Quaternion().setFromAxisAngle(rotAxis, angle);
+      p.mesh.quaternion.premultiply(q);
     }
-  }
-}
-
-function updateAnimation(dt) {
-  const p = state.player;
-  if (!p.mixer) return; 
-  
-  const isMoving = Math.abs(state.input.forward) > 0.01 || Math.abs(state.input.right) > 0.01;
-
-  p.mixer.update(dt);
-
-  // КОСТЫЛЬ: Проходимся по всем костям
-  if (p.mesh && p.mesh.children.length > 0) {
-    p.mesh.children[0].traverse((node) => {
-      if (node.isBone && node.userData.restQuat) {
-        const name = node.name.toLowerCase();
-        // Разрешаем двигаться ТОЛЬКО рукам и ногам
-        const isLimb = ['thigh', 'calf', 'leg', 'foot', 'arm', 'hand', 'shoulder', 'toe', 'finger', 'бедр', 'голен', 'ступ', 'рук', 'плеч', 'кист'].some(kw => name.includes(kw));
-        
-        // Всё остальное (спина, шея, голова, таз) жестко ставим прямо
-        if (!isLimb) {
-          node.quaternion.copy(node.userData.restQuat);
-        }
-      }
-    });
-  }
-
-  const targetAction = isMoving ? p.actions.walk : p.actions.idle;
-
-  if (targetAction && targetAction !== p.currentAction) {
-    if (p.currentAction) p.currentAction.fadeOut(0.2);
-    targetAction.reset().fadeIn(0.2).play();
-    p.currentAction = targetAction;
   }
 }
 
 function updateCamera(dt) {
   const cam = state.camera;
   const p = state.player;
-  cam.target.lerp(p.position.clone().add(new THREE.Vector3(0, 1.2, 0)), Math.min(1, dt * 12));
+  
+  // Камера смотрит чуть выше центра шара
+  cam.target.lerp(p.position.clone().add(new THREE.Vector3(0, p.radius, 0)), Math.min(1, dt * 12));
 
   const hd = Math.cos(cam.orbitPitch) * cam.distance;
   const vd = Math.sin(cam.orbitPitch) * cam.distance;
@@ -586,7 +536,7 @@ canvas.addEventListener('touchmove', (e) => {
     const ts = [...activeTouches.values()];
     const d = Math.hypot(ts[0].x - ts[1].x, ts[0].y - ts[1].y);
     if (pinchState.startDist > 1 && d > 1 && dev.mode !== 'coords') {
-      state.camera.distance = Math.max(2, Math.min(20, pinchState.startZoom * (pinchState.startDist / d)));
+      state.camera.distance = Math.max(3, Math.min(25, pinchState.startZoom * (pinchState.startDist / d)));
     }
   }
 }, { passive: true });
@@ -830,7 +780,6 @@ function animate() {
     updateFreeCamera(dt);
   } else {
     updatePhysics(dt);
-    updateAnimation(dt);
     updateCamera(dt);
   }
 
@@ -845,6 +794,7 @@ function animate() {
       `FPS: ${fps}\n` +
       `Mode: ${dev.mode}\n` +
       `P: ${state.player.position.x.toFixed(1)}, ${state.player.position.y.toFixed(1)}, ${state.player.position.z.toFixed(1)}\n` +
+      `Vel: ${state.player.velocity.length().toFixed(2)}\n` +
       `Grounded: ${state.player.grounded ? 'Y' : 'N'}`;
   }
 
