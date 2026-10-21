@@ -132,7 +132,7 @@ function showError(msg, isGood = false) {
   errorBox.style.background = isGood ? 'rgba(0, 150, 0, 0.92)' : 'rgba(190, 0, 0, 0.92)';
   errorBox.style.display = 'block';
   clearTimeout(window._errTimeout);
-  window._errTimeout = setTimeout(() => { errorBox.style.display = 'none'; }, 7000);
+  window._errTimeout = setTimeout(() => { errorBox.style.display = 'none'; }, 5000);
   console.log(msg);
 }
 
@@ -151,7 +151,7 @@ const SAVED_OBJECTS = {};
 
 const PLAYER_HEIGHT      = 1.6;
 const PLAYER_RADIUS      = 0.35;
-const MOVE_SPEED         = 5.0;
+const MOVE_SPEED         = 4.0; // Чуть замедлил для соответствия анимации
 const GRAVITY            = 22.0;
 const JUMP_SPEED         = 8.0;
 const AIR_CONTROL        = 0.45;
@@ -204,7 +204,6 @@ const state = {
   player: {
     mesh: null,
     modelBaseY: 0,
-    modelCenter: new THREE.Vector3(),
     walkCycle: 0,
     mixer: null,
     actions: { idle: null, walk: null },
@@ -278,7 +277,6 @@ loader.load('shell.glb', (gltf) => {
   box = new THREE.Box3().setFromObject(model);
   const center = box.getCenter(new THREE.Vector3());
   
-  state.player.modelCenter.copy(center); // Запоминаем центр
   model.position.x = -center.x;
   model.position.z = -center.z;
   model.position.y = -box.min.y + PLAYER_Y_OFFSET;
@@ -290,17 +288,15 @@ loader.load('shell.glb', (gltf) => {
   state.player.mesh = group;
   group.position.copy(state.player.position);
 
-  // ОБХОД ОГРАНИЧЕНИЯ PRISMA3D
   if (gltf.animations && gltf.animations.length > 0) {
     const mixer = new THREE.AnimationMixer(model);
     state.player.mixer = mixer;
     const clips = gltf.animations;
 
-    // Если в файле только одна анимация (Prisma3D объединила всё в одну)
     if (clips.length === 1) {
       const clip = clips[0];
       
-      // Вырезаем смещение по X и Z, чтобы убрать телепортацию (Root Motion)
+      // Вырезаем смещение по X и Z, чтобы убрать телепортацию
       clip.tracks.forEach(track => {
         if (track.name.endsWith('.position')) {
           for (let i = 0; i < track.values.length; i += 3) {
@@ -311,10 +307,9 @@ loader.load('shell.glb', (gltf) => {
       });
 
       state.player.actions.walk = mixer.clipAction(clip);
-      showError("Успешно! Анимация (" + clip.name + ") привязана к ходьбе.", true);
-    } 
-    // Если анимаций две и больше (нормальный экспорт)
-    else {
+      showError("Анимация ходьбы активна.", true);
+    } else {
+      // Стандартный экспорт (2+ анимации)
       const findClip = (kw) => clips.find(c => c.name.toLowerCase().includes(kw));
       let idleClip = findClip('idle') || findClip('stand') || clips[0];
       let walkClip = findClip('walk') || findClip('run') || clips[1];
@@ -327,7 +322,6 @@ loader.load('shell.glb', (gltf) => {
       if (walkClip) {
         state.player.actions.walk = mixer.clipAction(walkClip);
       }
-      showError("Загружены 2+ анимации.", true);
     }
   } else {
     showError("В файле НЕТ анимаций! Включена псевдо-анимация.");
@@ -436,19 +430,23 @@ function updatePhysics(dt) {
     while (diff < -Math.PI) diff += Math.PI * 2;
     p.mesh.rotation.y += diff * Math.min(1, dt * 12);
 
+    // ПРИНУДИТЕЛЬНОЕ ВЫПРЯМЛЕНИЕ МОДЕЛИ
+    // Отключаем наклоны вперед/назад/в стороны, которые заложены в анимации
+    if (p.mesh.children.length > 0) {
+      const model = p.mesh.children[0];
+      model.rotation.x = 0;
+      model.rotation.z = 0;
+    }
+
     // Псевдо-анимация, если НЕТ реальных анимаций
     if (!p.mixer && p.mesh.children.length > 0) {
       const model = p.mesh.children[0];
       if (isMoving && p.grounded) {
         p.walkCycle += dt * 12; 
         model.position.y = p.modelBaseY + Math.abs(Math.sin(p.walkCycle)) * 0.08; 
-        model.rotation.z = Math.sin(p.walkCycle) * 0.08; 
-        model.rotation.x = 0.15; 
       } else {
         p.walkCycle = 0;
         model.position.y += (p.modelBaseY - model.position.y) * Math.min(1, dt * 10);
-        model.rotation.z += (0 - model.rotation.z) * Math.min(1, dt * 10);
-        model.rotation.x += (0 - model.rotation.x) * Math.min(1, dt * 10);
       }
     }
   }
@@ -457,11 +455,16 @@ function updatePhysics(dt) {
 function updateAnimation(dt) {
   const p = state.player;
   if (!p.mixer) return; 
-  p.mixer.update(dt);
-
-  const isMoving = Math.abs(state.input.forward) > 0.01 || Math.abs(state.input.right) > 0.01;
   
-  // Если у нас есть Walk (даже если она одна)
+  const isMoving = Math.abs(state.input.forward) > 0.01 || Math.abs(state.input.right) > 0.01;
+
+  // Настраиваем скорость анимации в зависимости от движения
+  if (p.actions.walk) {
+    p.actions.walk.setEffectiveTimeScale(isMoving ? 1.0 : 0.0); // 1.0 - нормальная скорость, 0 - стоп
+  }
+
+  p.mixer.update(dt);
+  
   if (p.actions.walk) {
     if (isMoving && !p.actions.walk.isRunning()) {
       p.actions.walk.reset().fadeIn(0.2).play();
