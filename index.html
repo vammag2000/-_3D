@@ -13,7 +13,7 @@
   #error-box {
     position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
     background: rgba(190, 0, 0, 0.92); color: #fff;
-    font-family: monospace; font-size: 12px; line-height: 1.35;
+    font-family: monospace; font-size: 11px; line-height: 1.35;
     padding: 8px 12px; border-radius: 8px; max-width: 90vw;
     z-index: 9999; display: none; white-space: pre-wrap; text-align: center;
     pointer-events: none;
@@ -132,7 +132,7 @@ function showError(msg, isGood = false) {
   errorBox.style.background = isGood ? 'rgba(0, 150, 0, 0.92)' : 'rgba(190, 0, 0, 0.92)';
   errorBox.style.display = 'block';
   clearTimeout(window._errTimeout);
-  window._errTimeout = setTimeout(() => { errorBox.style.display = 'none'; }, 8000);
+  window._errTimeout = setTimeout(() => { errorBox.style.display = 'none'; }, 10000); // Держим дольше
   console.log(msg);
 }
 
@@ -294,29 +294,43 @@ loader.load('shell.glb', (gltf) => {
     const clips = gltf.animations;
 
     if (clips.length === 1) {
-      // РАЗРЕЗАЕМ КЛИП (СНАЧАЛА WALK, ПОТОМ IDLE)
       const rawClip = clips[0];
-      const fps = 30; // Стандартный FPS
+      const fps = 30; 
       const totalFrames = Math.floor(rawClip.duration * fps);
       const half = Math.floor(totalFrames / 2);
       
-      // Первая половина - Walk, вторая - Idle
       let walkClip = THREE.AnimationUtils.subclip(rawClip, 'Walk', 0, half, fps);
       let idleClip = THREE.AnimationUtils.subclip(rawClip, 'Idle', half, totalFrames, fps);
       
-      // ОЧИСТКА ОТ НАКЛОНОВ И СМЕЩЕНИЙ (Root Motion)
+      // СБОР ИМЕН КОСТЕЙ ДЛЯ ОТЛАДКИ
+      let boneNames = new Set();
+      rawClip.tracks.forEach(t => {
+        let parts = t.name.split('.');
+        if (parts.length > 1 && parts[1] === 'quaternion') boneNames.add(parts[0]);
+      });
+      let boneStr = Array.from(boneNames).slice(0, 5).join(", ") + (boneNames.size > 5 ? "..." : "");
+
+      // ОЧИСТКА ОТ НАКЛОНОВ
       const cleanClip = (clip) => {
         clip.tracks = clip.tracks.filter(t => {
-          if (t.name.includes('Armature') && t.name.includes('.quaternion')) return false;
-          if (t.name.includes('Root') && t.name.includes('.quaternion')) return false;
+          if (t.name.endsWith('.position')) return true; // Оставляем позиции (обнулим ниже)
+          
+          if (t.name.endsWith('.quaternion')) {
+            const lower = t.name.toLowerCase();
+            // Разрешаем двигаться ТОЛЬКО конечностям (руки, ноги, пальцы)
+            const isLimb = ['arm', 'leg', 'foot', 'hand', 'finger', 'toe', 'shoulder', 'рук', 'ног', 'ступ', 'кист', 'плеч'].some(kw => lower.includes(kw));
+            if (isLimb) return true;
+            return false; // Удаляем повороты торса, таза и корня
+          }
           return true;
         });
 
+        // Обнуляем смещение по X и Z, чтобы не было телепортации
         clip.tracks.forEach(t => {
           if (t.name.endsWith('.position')) {
             for (let i = 0; i < t.values.length; i += 3) {
-              t.values[i] = 0;     // Обнуляем X
-              t.values[i+2] = 0;   // Обнуляем Z
+              t.values[i] = 0;     // X
+              t.values[i+2] = 0;   // Z
             }
           }
         });
@@ -330,8 +344,9 @@ loader.load('shell.glb', (gltf) => {
       state.player.actions.idle.play();
       state.player.currentAction = state.player.actions.idle;
       
-      showError("Клип разрезан: Walk (1-я часть) + Idle (2-я часть).", true);
+      showError("Кости: " + boneStr + "\nКлип разрезан и выпрямлен!", true);
     } else {
+      // Стандартный экспорт
       const findClip = (kw) => clips.find(c => c.name.toLowerCase().includes(kw));
       let idleClip = findClip('idle') || findClip('stand') || clips[0];
       let walkClip = findClip('walk') || findClip('run') || clips[1];
