@@ -150,11 +150,9 @@ const isDev = new URLSearchParams(location.search).get('dev') === '1';
 const SAVED_OBJECTS = {};
 
 // ⬇⬇⬇ СПИСОК ТВОИХ ФАЙЛОВ УРОВНЯ ⬇⬇⬇
-// Просто добавляй сюда новые названия файлов, которые загружаешь на GitHub
 const LEVEL_FILES = [
   'zov.glb',       // Твой основной пол
-  // 'wall.glb',      // Пример: стены
-  // 'trampoline.glb' // Пример: трамплин
+  'wall.glb'       // Твоя стена
 ];
 
 // --- ФИЗИЧЕСКИЕ КОНСТАНТЫ ---
@@ -322,12 +320,6 @@ function isDescendantOf(obj, ancestor) {
   let p = obj;
   while (p) { if (p === ancestor) return true; p = p.parent; }
   return false;
-}
-
-// Для трамплинов (задел на будущее)
-function checkTrampolineCollisions() {
-  // Можно проверять имя объекта, на который наступил шар (hits[0].object.name)
-  // Если имя "trampoline", то p.velocity.y = 15.0;
 }
 
 function updatePhysics(dt) {
