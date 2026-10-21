@@ -132,7 +132,7 @@ function showError(msg, isGood = false) {
   errorBox.style.background = isGood ? 'rgba(0, 150, 0, 0.92)' : 'rgba(190, 0, 0, 0.92)';
   errorBox.style.display = 'block';
   clearTimeout(window._errTimeout);
-  window._errTimeout = setTimeout(() => { errorBox.style.display = 'none'; }, 10000); // Держим дольше
+  window._errTimeout = setTimeout(() => { errorBox.style.display = 'none'; }, 10000);
   console.log(msg);
 }
 
@@ -213,6 +213,8 @@ const state = {
     grounded: false,
     targetYaw: 0,
     spawnPoint: new THREE.Vector3(0, 1, 0),
+    hipBone: null, // Кость таза для выпрямления
+    hipRestQuat: new THREE.Quaternion(), // Исходный поворот таза
   },
   camera: { orbitYaw: 0, orbitPitch: 0.35, distance: 6, target: new THREE.Vector3() },
   map: null,
@@ -268,6 +270,18 @@ loader.load('shell.glb', (gltf) => {
     }
   });
 
+  // Ищем кость таза (hip / hips) и запоминаем её исходный поворот
+  model.traverse((node) => {
+    if (node.isBone) {
+      const name = node.name.toLowerCase();
+      if (name === 'hip' || name === 'hips' || name === 'pelvis') {
+        state.player.hipBone = node;
+        state.player.hipRestQuat.copy(node.quaternion);
+        console.log("Найдена кость таза:", node.name);
+      }
+    }
+  });
+
   model.updateMatrixWorld(true);
   let box = new THREE.Box3().setFromObject(model);
   let size = box.getSize(new THREE.Vector3());
@@ -302,37 +316,27 @@ loader.load('shell.glb', (gltf) => {
       let walkClip = THREE.AnimationUtils.subclip(rawClip, 'Walk', 0, half, fps);
       let idleClip = THREE.AnimationUtils.subclip(rawClip, 'Idle', half, totalFrames, fps);
       
-      // СБОР ИМЕН КОСТЕЙ ДЛЯ ОТЛАДКИ
-      let boneNames = new Set();
-      rawClip.tracks.forEach(t => {
-        let parts = t.name.split('.');
-        if (parts.length > 1 && parts[1] === 'quaternion') boneNames.add(parts[0]);
-      });
-      let boneStr = Array.from(boneNames).slice(0, 5).join(", ") + (boneNames.size > 5 ? "..." : "");
-
-      // ОЧИСТКА ОТ НАКЛОНОВ
+      // Оставляем анимацию ТОЛЬКО для конечностей (бедра, голени, стопы, руки, плечи)
       const cleanClip = (clip) => {
         clip.tracks = clip.tracks.filter(t => {
-          if (t.name.endsWith('.position')) return true; // Оставляем позиции (обнулим ниже)
+          const trackName = t.name.toLowerCase();
           
-          if (t.name.endsWith('.quaternion')) {
-            const lower = t.name.toLowerCase();
-            // Разрешаем двигаться ТОЛЬКО конечностям (руки, ноги, пальцы)
-            const isLimb = ['arm', 'leg', 'foot', 'hand', 'finger', 'toe', 'shoulder', 'рук', 'ног', 'ступ', 'кист', 'плеч'].some(kw => lower.includes(kw));
-            if (isLimb) return true;
-            return false; // Удаляем повороты торса, таза и корня
-          }
-          return true;
-        });
-
-        // Обнуляем смещение по X и Z, чтобы не было телепортации
-        clip.tracks.forEach(t => {
-          if (t.name.endsWith('.position')) {
+          if (trackName.endsWith('.position')) {
+            // Обнуляем смещение по X и Z (убираем телепортацию)
             for (let i = 0; i < t.values.length; i += 3) {
               t.values[i] = 0;     // X
               t.values[i+2] = 0;   // Z
             }
+            return true;
           }
+          
+          if (trackName.endsWith('.quaternion')) {
+            // Разрешаем движение ТОЛЬКО конечностям
+            const isLimb = ['thigh', 'calf', 'leg', 'foot', 'arm', 'hand', 'shoulder', 'toe', 'finger', 'бедр', 'голен', 'ступ', 'рук', 'плеч', 'кист'].some(kw => trackName.includes(kw));
+            if (isLimb) return true;
+            return false; // Удаляем повороты торса, таза, головы
+          }
+          return true;
         });
       };
       
@@ -344,9 +348,8 @@ loader.load('shell.glb', (gltf) => {
       state.player.actions.idle.play();
       state.player.currentAction = state.player.actions.idle;
       
-      showError("Кости: " + boneStr + "\nКлип разрезан и выпрямлен!", true);
+      showError("Анимация конечностей активна, таз выпрямлен!", true);
     } else {
-      // Стандартный экспорт
       const findClip = (kw) => clips.find(c => c.name.toLowerCase().includes(kw));
       let idleClip = findClip('idle') || findClip('stand') || clips[0];
       let walkClip = findClip('walk') || findClip('run') || clips[1];
@@ -477,6 +480,11 @@ function updateAnimation(dt) {
   const isMoving = Math.abs(state.input.forward) > 0.01 || Math.abs(state.input.right) > 0.01;
 
   p.mixer.update(dt);
+
+  // Принудительно выпрямляем таз (hip), чтобы убрать наклон
+  if (p.hipBone) {
+    p.hipBone.quaternion.copy(p.hipRestQuat);
+  }
 
   const targetAction = isMoving ? p.actions.walk : p.actions.idle;
 
@@ -827,6 +835,27 @@ function animate() {
   if (isDev) {
     sun.position.set(state.player.position.x + 20, state.player.position.y + 40, state.player.position.z + 20);
     sun.target.position.copy(state.player.position);
+    sun.target.updateMatrixWorld();
+
+    devInfoEl.textContent =
+      `FPS: ${fps}\n` +
+      `Mode: ${dev.mode}\n` +
+      `P: ${state.player.position.x.toFixed(1)}, ${state.player.position.y.toFixed(1)}, ${state.player.position.z.toFixed(1)}\n` +
+      `Grounded: ${state.player.grounded ? 'Y' : 'N'}`;
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
     sun.target.updateMatrixWorld();
 
     devInfoEl.textContent =
