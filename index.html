@@ -189,16 +189,16 @@ const FALL_RESPAWN_Y     = -20;
 const WALL_BOUNCE        = 0.2;   
 
 // --- НАСТРОЙКИ ЭФФЕКТА МЕТЕОРА ---
-const SPAWN_HEIGHT       = 180;   // Очень высоко (падение ~4 сек)
-const BURN_DURATION      = 2.0;   // Сколько секунд горит после падения
-const PARTICLE_COUNT     = 400;   // Много частиц для красивого огня
+const SPAWN_HEIGHT       = 180;   
+const BURN_DURATION      = 2.0;   
+const PARTICLE_COUNT     = 400;   
 
 // =========================================================
 // 3) THREE.JS БАЗА
 // =========================================================
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x112233); // Сделаем небо темнее, чтобы огонь был ярче
+scene.background = new THREE.Color(0x112233); 
 
 const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 1000);
 
@@ -247,7 +247,7 @@ const state = {
     burnTimer: 0,
     shakeTimer: 0,
   },
-  camera: { orbitYaw: 0, orbitPitch: 0.4, distance: 14, target: new THREE.Vector3() }, // Отодвинули камеру
+  camera: { orbitYaw: 0, orbitPitch: 0.4, distance: 14, target: new THREE.Vector3() }, 
   map: null,
   input: { forward: 0, right: 0, jumpBuffer: 0 },
 };
@@ -264,22 +264,21 @@ const particleGeo = new THREE.BufferGeometry();
 const particlePos = new Float32Array(PARTICLE_COUNT * 3);
 particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePos, 3));
 
-// Улучшенная текстура огня (яркое ядро, плавный переход в красный)
 const pCanvas = document.createElement('canvas');
 pCanvas.width = 128; pCanvas.height = 128;
 const pCtx = pCanvas.getContext('2d');
 const gradient = pCtx.createRadialGradient(64, 64, 0, 64, 64, 64);
-gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');   // Белое ядро
-gradient.addColorStop(0.2, 'rgba(255, 255, 0, 1)');   // Желтый
-gradient.addColorStop(0.5, 'rgba(255, 100, 0, 0.8)'); // Оранжевый
-gradient.addColorStop(0.8, 'rgba(255, 0, 0, 0.3)');   // Красный
-gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');       // Прозрачный
+gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');   
+gradient.addColorStop(0.2, 'rgba(255, 255, 0, 1)');   
+gradient.addColorStop(0.5, 'rgba(255, 100, 0, 0.8)'); 
+gradient.addColorStop(0.8, 'rgba(255, 0, 0, 0.3)');   
+gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');       
 pCtx.fillStyle = gradient;
 pCtx.fillRect(0, 0, 128, 128);
 const particleTex = new THREE.CanvasTexture(pCanvas);
 
 const particleMat = new THREE.PointsMaterial({
-  size: 2.5, // Очень крупные частицы
+  size: 2.5, 
   map: particleTex,
   blending: THREE.AdditiveBlending,
   depthWrite: false,
@@ -291,46 +290,43 @@ const particleMat = new THREE.PointsMaterial({
 const particleSystem = new THREE.Points(particleGeo, particleMat);
 scene.add(particleSystem);
 
-// Источник света от огня
 const fireLight = new THREE.PointLight(0xff5500, 0, 30);
 scene.add(fireLight);
 
 function spawnFireParticle(pos, isFalling) {
   if (fireParticles.length >= PARTICLE_COUNT) return;
   
-  const p = {
+  const particle = {
     position: pos.clone(),
     life: 1.0
   };
 
   if (isFalling) {
-    // При падении частицы летят вверх (шлейф)
-    p.velocity = new THREE.Vector3(
+    particle.velocity = new THREE.Vector3(
       (Math.random() - 0.5) * 8,
       Math.random() * 15 + 5,
       (Math.random() - 0.5) * 8
     );
   } else {
-    // При горении на земле разлетаются в стороны
-    p.velocity = new THREE.Vector3(
+    particle.velocity = new THREE.Vector3(
       (Math.random() - 0.5) * 6,
       Math.random() * 8 + 2,
       (Math.random() - 0.5) * 6
     );
   }
   
-  fireParticles.push(p);
+  fireParticles.push(particle);
 }
 
 function updateFireParticles(dt) {
   const positions = particleSystem.geometry.attributes.position.array;
   
   for (let i = fireParticles.length - 1; i >= 0; i--) {
-    const p = fireParticles[i];
-    p.life -= dt * 1.2; 
-    p.position.add(p.velocity.clone().multiplyScalar(dt));
+    const particle = fireParticles[i];
+    particle.life -= dt * 1.2; 
+    particle.position.add(particle.velocity.clone().multiplyScalar(dt));
     
-    if (p.life <= 0) {
+    if (particle.life <= 0) {
       fireParticles.splice(i, 1);
     }
   }
@@ -409,7 +405,6 @@ loader.load('shell.glb', (gltf) => {
   const group = new THREE.Group();
   group.add(model);
 
-  // Создаем светящуюся ауру вокруг сферы (для огня)
   const auraGeo = new THREE.SphereGeometry(state.player.radius * 1.4, 16, 16);
   const auraMat = new THREE.MeshBasicMaterial({ 
     color: 0xff5500, 
@@ -523,7 +518,6 @@ function updatePhysics(dt) {
 
   p.position.y += p.velocity.y * dt;
 
-  // === ПРИЗЕМЛЕНИЕ ===
   const groundY = findGroundHeight(p.position.x, p.position.z);
   if (groundY !== null && p.position.y - p.radius <= groundY) {
     p.position.y = groundY + p.radius;
@@ -533,37 +527,33 @@ function updatePhysics(dt) {
     if (p.mode === 'falling') {
       p.mode = 'burning';
       p.burnTimer = BURN_DURATION;
-      p.shakeTimer = 0.5; // Включаем тряску камеры
+      p.shakeTimer = 0.5; 
       
-      // ОГРОМНЫЙ взрыв частиц при ударе
+      // ОГРОМНЫЙ взрыв частиц при ударе (исправлена ошибка с 'p')
       for (let i = 0; i < 100; i++) {
          const burstPos = p.position.clone();
          burstPos.y -= p.radius;
-         // Разлетаются во все стороны
-         const p = { 
+         
+         const particle = { 
            position: burstPos, 
            velocity: new THREE.Vector3((Math.random()-0.5)*30, Math.random()*20, (Math.random()-0.5)*30), 
            life: 1.0 
          };
-         fireParticles.push(p);
+         fireParticles.push(particle);
       }
     }
   } else {
     p.grounded = false;
   }
 
-  // === ГОРЕНИЕ И ПОЛЕТ ===
   if (p.mode === 'falling' || p.mode === 'burning') {
-    // Огонь горит всё время падения и 2 секунды после
     fireLight.position.copy(p.position);
-    fireLight.intensity = 8 + Math.random() * 4; // Мерцание
-    
+    fireLight.intensity = 8 + Math.random() * 4; 
     if (p.auraMesh) p.auraMesh.visible = true;
 
-    // Спавним частицы
     if (Math.random() < 0.9) {
       const spawnPos = p.position.clone();
-      spawnPos.y -= p.radius * 0.5; // Берем чуть ниже центра
+      spawnPos.y -= p.radius * 0.5; 
       spawnFireParticle(spawnPos, p.mode === 'falling');
     }
   } else {
@@ -604,7 +594,6 @@ function updateCamera(dt) {
   const cam = state.camera;
   const p = state.player;
   
-  // Камера плавно следит за целью (сфера)
   cam.target.lerp(p.position.clone().add(new THREE.Vector3(0, p.radius, 0)), Math.min(1, dt * 15));
 
   const hd = Math.cos(cam.orbitPitch) * cam.distance;
@@ -615,10 +604,8 @@ function updateCamera(dt) {
     cam.target.z + Math.cos(cam.orbitYaw) * hd
   );
   
-  // Плавное следование
   camera.position.lerp(desired, Math.min(1, dt * 20));
   
-  // Тряска камеры при ударе
   if (p.shakeTimer > 0) {
     p.shakeTimer -= dt;
     const shakeAmt = p.shakeTimer * 0.5;
@@ -657,7 +644,6 @@ function updateInputFromButtons() {
   state.input.right   = (dpad.right ? 1 : 0) - (dpad.left ? 1 : 0);
 }
 
-// Тач-управление
 const activeTouches = new Map();
 let pinchState = { active: false, startDist: 0, startZoom: 1 };
 let tapInfo = { active: false, startTime: 0, startX: 0, startY: 0, moved: false };
@@ -701,7 +687,6 @@ canvas.addEventListener('touchmove', (e) => {
     const ts = [...activeTouches.values()];
     const d = Math.hypot(ts[0].x - ts[1].x, ts[0].y - ts[1].y);
     if (pinchState.startDist > 1 && d > 1 && dev.mode !== 'coords') {
-      // Зум привязан к сфере
       state.camera.distance = Math.max(5, Math.min(40, pinchState.startZoom * (pinchState.startDist / d)));
     }
   }
@@ -725,7 +710,7 @@ canvas.addEventListener('touchcancel', (e) => {
 }, { passive: true });
 
 // =========================================================
-// 8) DEV-РЕЖИМ (без изменений)
+// 8) DEV-РЕЖИМ
 // =========================================================
 const dev = {
   mode: 'play',
