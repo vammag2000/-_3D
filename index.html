@@ -331,7 +331,6 @@ async function loadLevel() {
       const obj = gltf.scene;
       obj.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
       
-      // Назначаем изначальные ID (важно для поиска базы)
       obj.traverse(o => { if (o.isMesh) o.userData.editId = filename + '_' + (objectCount++); });
       
       state.map.add(obj);
@@ -340,7 +339,6 @@ async function loadLevel() {
     }
   }
 
-  // Применяем данные из SAVED_OBJECTS и создаем клоны
   applySavedObjects();
 
   const spawnY = findGroundHeight(0, 0);
@@ -706,7 +704,13 @@ btnClone.addEventListener('click', () => {
     edited: true 
   };
   
-  state.map.add(clone);
+  // ВАЖНО: Добавляем клон туда же, где находится оригинал (чтобы сохранить масштаб/поворот родителя)
+  if (dev.selectedObject.parent) {
+    dev.selectedObject.parent.add(clone);
+  } else {
+    state.map.add(clone);
+  }
+  
   dev.selectedObject = clone; 
   dev.transformControls.attach(clone);
   
@@ -775,16 +779,16 @@ function collectObjectTransforms() {
 
 function applySavedObjects() {
   if (!state.map) return;
-  let data = SAVED_OBJECTS; // Используем данные напрямую из файла
+  let data = SAVED_OBJECTS; 
   
   try {
     const ls = JSON.parse(localStorage.getItem('savedObjects') || 'null');
-    if (ls && Object.keys(ls).length) data = ls; // Приоритет за локальным сохранением
+    if (ls && Object.keys(ls).length) data = ls; 
   } catch(e) {}
   
   if (!data || !Object.keys(data).length) return;
 
-  // 1. Применяем позиции к объектам, которые уже есть на карте
+  // 1. Применяем данные к базовым объектам
   state.map.traverse(o => {
     if (o.isMesh && o.userData.editId && data[o.userData.editId]) {
       const d = data[o.userData.editId];
@@ -796,7 +800,7 @@ function applySavedObjects() {
     }
   });
 
-  // 2. Воссоздаем клоны, которых нет на карте
+  // 2. Воссоздаем клоны
   const clonesToCreate = [];
   for (const [id, d] of Object.entries(data)) {
     if (d.baseId) {
@@ -821,7 +825,13 @@ function applySavedObjects() {
         baseId: item.data.baseId, 
         edited: true 
       };
-      state.map.add(clone);
+      
+      // ВАЖНО: Добавляем в ту же группу (родителя), что и оригинал
+      if (sourceObj.parent) {
+        sourceObj.parent.add(clone);
+      } else {
+        state.map.add(clone);
+      }
     }
   }
 }
@@ -839,7 +849,18 @@ function snapObjectToGround(obj) {
 
   if (hits.length) {
     const groundY = hits[0].point.y;
-    obj.position.y += groundY - box.min.y;
+    const deltaY = groundY - box.min.y;
+    
+    // ВАЖНО: двигаем в мировых координатах, чтобы не сломать при поворотах родителя
+    const worldPos = new THREE.Vector3();
+    obj.getWorldPosition(worldPos);
+    worldPos.y += deltaY;
+    
+    if (obj.parent) {
+      obj.parent.worldToLocal(worldPos);
+    }
+    obj.position.copy(worldPos);
+    
     obj.userData.edited = true;
   }
 }
