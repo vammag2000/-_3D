@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>3D Game</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: -apple-system, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #canvas-container { position: fixed; inset: 0; }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  #error-box {
+    position: fixed; top: 0; left: 0; right: 0;
+    background: rgba(190, 0, 0, 0.92); color: #fff;
+    font-family: monospace; font-size: 11px; line-height: 1.35;
+    padding: 6px; max-height: 45%; overflow-y: auto;
+    z-index: 9999; display: none; white-space: pre-wrap; word-break: break-all;
+  }
+  #loading {
+    position: fixed; inset: 0; display: flex;
+    align-items: center; justify-content: center;
+    color: #fff; font-size: 17px; z-index: 100;
+    background: #111; flex-direction: column; gap: 12px; text-align: center; padding: 20px;
+  }
+  #loading.hidden { display: none; }
+
+  #dpad { position: fixed; left: 16px; bottom: 16px; width: 150px; height: 150px; z-index: 50; }
+  .dpad-btn {
+    position: absolute; width: 50px; height: 50px;
+    background: rgba(255,255,255,0.22);
+    border: 2px solid rgba(255,255,255,0.45);
+    border-radius: 10px; color: #fff; font-size: 18px;
+    display: flex; align-items: center; justify-content: center; touch-action: none;
+  }
+  .dpad-btn.active { background: rgba(255,255,255,0.5); }
+  #dpad-up    { left: 50px; top: 0; }
+  #dpad-down  { left: 50px; bottom: 0; }
+  #dpad-left  { left: 0; top: 50px; }
+  #dpad-right { right: 0; top: 50px; }
+
+  #jump-btn {
+    position: fixed; right: 20px; bottom: 30px;
+    width: 90px; height: 90px; border-radius: 50%;
+    background: rgba(0, 150, 255, 0.35);
+    border: 3px solid rgba(0, 150, 255, 0.7);
+    color: #fff; font-size: 13px; font-weight: bold;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 50; touch-action: none;
+  }
+  #jump-btn.active { background: rgba(0, 150, 255, 0.65); }
+
+  #dev-tools {
+    position: fixed; top: 8px; right: 8px;
+    display: none; flex-direction: column; gap: 4px;
+    z-index: 100; max-width: 44vw;
+  }
+  #dev-tools.visible { display: flex; }
+  #dev-tools button {
+    padding: 7px 9px;
+    background: rgba(25,25,25,0.9); border: 1px solid #555; color: #fff;
+    border-radius: 6px; font-size: 11px; touch-action: manipulation; white-space: nowrap;
+  }
+  #dev-tools button.active { background: #062; border-color: #0f0; }
+  #dev-tools button.danger { background: rgba(120,20,20,0.9); border-color: #a33; }
+
+  #dev-info {
+    position: fixed; top: 8px; left: 8px;
+    background: rgba(0,0,0,0.75); color: #0f0;
+    padding: 5px 8px; font-family: monospace; font-size: 10px;
+    border-radius: 4px; display: none; z-index: 100;
+    white-space: pre; line-height: 1.4; max-width: 50vw;
+  }
+  #dev-info.visible { display: block; }
+
+  #coord-popup {
+    position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.9); color: #0f0;
+    padding: 10px 16px; font-family: monospace; font-size: 13px;
+    border-radius: 8px; border: 1px solid #0f0;
+    display: none; z-index: 200; white-space: pre; text-align: center;
+  }
+  #coord-popup.visible { display: block; }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+<div id="error-box"></div>
+<div id="loading">Загрузка игры...</div>
+<div id="dev-info"></div>
+<div id="coord-popup"></div>
+
+<div id="dpad">
+  <div class="dpad-btn" id="dpad-up">▲</div>
+  <div class="dpad-btn" id="dpad-down">▼</div>
+  <div class="dpad-btn" id="dpad-left">◀</div>
+  <div class="dpad-btn" id="dpad-right">▶</div>
+</div>
+
+<div id="jump-btn">JUMP</div>
+
+<div id="dev-tools">
+  <button id="btn-coords">Координаты</button>
+  <button id="btn-editor">Редактор</button>
+  <button id="btn-gizmo-translate" class="gizmo-btn">↔ Двигать</button>
+  <button id="btn-gizmo-rotate" class="gizmo-btn">↻ Вращать</button>
+  <button id="btn-gizmo-scale" class="gizmo-btn">⤢ Масштаб</button>
+  <button id="btn-save">💾 Сохранить</button>
+  <button id="btn-export">📋 Экспорт кода</button>
+  <button id="btn-reset" class="danger">🗑 Сброс</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+// =========================================================
+// 1) ОБРАБОТКА ОШИБОК (до всего остального)
+// =========================================================
+const errorBox = document.getElementById('error-box');
+const errorLog = [];
+function showError(msg) {
+  errorLog.push(String(msg));
+  errorBox.textContent = errorLog.slice(-8).join('\n\n');
+  errorBox.style.display = 'block';
+  console.error(msg);
+}
+errorBox.addEventListener('click', () => errorBox.style.display = 'none');
+
+window.onerror = (msg, src, line, col, err) => {
+  showError(`ERR: ${msg}\n@ ${(src||'').split('/').pop()}:${line}:${col}\n${err?.stack || ''}`);
+};
+window.addEventListener('unhandledrejection', (e) => {
+  showError(`PROMISE: ${e.reason?.stack || e.reason}`);
+});
+window.addEventListener('error', (e) => {
+  if (e.target && e.target !== window) {
+    showError(`RESOURCE FAIL: ${e.target.src || e.target.href}`);
+  }
+}, true);
+
+// =========================================================
+// 2) ИМПОРТЫ
+// =========================================================
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
+
+// =========================================================
+// 3) КОНФИГУРАЦИЯ
+// =========================================================
+const isDev = new URLSearchParams(location.search).get('dev') === '1';
+
+// Сюда вставить результат «Экспорт кода». localStorage имеет приоритет.
+const SAVED_OBJECTS = {};
+
+// Настройки персонажа / физики
+const PLAYER_HEIGHT      = 1.6;
+const PLAYER_RADIUS      = 0.35;
+const MOVE_SPEED         = 5.0;
+const GRAVITY            = 22.0;
+const JUMP_SPEED         = 8.0;
+const AIR_CONTROL        = 0.45;
+const FALL_RESPAWN_Y     = -20;   // если упал ниже — респавн
+// Если модель смотрит в -Z по умолчанию, поменяй на Math.PI
+const MODEL_FORWARD_OFFSET = 0;
+
+// =========================================================
+// 4) THREE.JS БАЗА
+// =========================================================
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x88bbdd);
+
+const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 500);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+container.appendChild(renderer.domElement);
+const canvas = renderer.domElement;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444455, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+sun.position.set(30, 50, 20);
+scene.add(sun);
+scene.add(new THREE.AmbientLight(0x404060, 0.6));
+
+// =========================================================
+// 5) СОСТОЯНИЕ
+// =========================================================
+const state = {
+  player: {
+    mesh: null,
+    mixer: null,
+    actions: { idle: null, walk: null },
+    currentAction: null,
+    position: new THREE.Vector3(0, 0, 0),
+    velocity: new THREE.Vector3(),
+    grounded: false,
+    targetYaw: 0,
+    spawnPoint: new THREE.Vector3(0, 1, 0),
+  },
+  camera: {
+    orbitYaw: 0,
+    orbitPitch: 0.35,
+    distance: 6,
+    target: new THREE.Vector3(),
+  },
+  map: null,
+  input: { forward: 0, right: 0, jumpBuffer: 0 },
+};
+
+const raycaster = new THREE.Raycaster();
+const DOWN = new THREE.Vector3(0, -1, 0);
+
+// =========================================================
+// 6) ЗАГРУЗКА
+// =========================================================
+const loadingEl = document.getElementById('loading');
+const loader = new GLTFLoader();
+let loadedCount = 0;
+const totalLoads = 2;
+function checkLoaded() {
+  loadedCount++;
+  if (loadedCount >= totalLoads) loadingEl.classList.add('hidden');
+}
+function updateLoading(msg) { loadingEl.textContent = msg; }
+
+// ----- MAP (платформа/уровень) -----
+updateLoading('Загрузка карты (zov.glb)...');
+loader.load('zov.glb', (gltf) => {
+  const map = gltf.scene;
+  map.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
+  scene.add(map);
+  state.map = map;
+
+  // Присваиваем детерминированные ID для редактора
+  let i = 0;
+  map.traverse(o => { if (o.isMesh) o.userData.editId = 'obj_' + (i++); });
+
+  applySavedObjects();
+
+  // Спавн игрока на землю
+  const spawnY = findGroundHeight(0, 0);
+  const sy = (spawnY !== null) ? spawnY : 0;
+  state.player.spawnPoint.set(0, sy + 0.05, 0);
+  state.player.position.copy(state.player.spawnPoint);
+  if (state.player.mesh) state.player.mesh.position.copy(state.player.position);
+
+  checkLoaded();
+}, (p) => {
+  if (p.total) updateLoading(`Загрузка карты: ${Math.round(p.loaded / p.total * 100)}%`);
+}, (err) => {
+  showError('Ошибка zov.glb: ' + (err?.message || err));
+  loadingEl.classList.add('hidden');
+});
+
+// ----- CHARACTER (персонаж) -----
+updateLoading('Загрузка персонажа (shell.glb)...');
+loader.load('shell.glb', (gltf) => {
+  const model = gltf.scene;
+
+  // Авто-масштаб до ~1.6 м по высоте
+  let box = new THREE.Box3().setFromObject(model);
+  let size = box.getSize(new THREE.Vector3());
+  if (size.y > 0.01) {
+    const s = PLAYER_HEIGHT / size.y;
+    if (Math.abs(s - 1) > 0.1) model.scale.setScalar(s);
+  }
+
+  // Опускаем так, чтобы ноги были в y=0
+  model.updateMatrixWorld(true);
+  box = new THREE.Box3().setFromObject(model);
+  model.position.y -= box.min.y;
+
+  const group = new THREE.Group();
+  group.add(model);
+  scene.add(group);
+  state.player.mesh = group;
+  group.position.copy(state.player.position);
+
+  // Анимации
+  if (gltf.animations?.length) {
+    const mixer = new THREE.AnimationMixer(model);
+    state.player.mixer = mixer;
+    const clips = gltf.animations;
+
+    // Вывод имён клипов в dev-режиме (для отладки)
+    if (isDev) {
+      showError('ANIMS: ' + clips.map(a => a.name).join(' | '));
+    }
+
+    const find = (kw) => clips.find(c => kw.some(k => c.name.toLowerCase().includes(k)));
+    const idleClip = find(['idle', 'stand', 'wait', 'rest']) || clips[0];
+    const walkClip = find(['walk', 'run', 'move', 'jog']) || clips[Math.min(1, clips.length - 1)];
+
+    if (idleClip) {
+      state.player.actions.idle = mixer.clipAction(idleClip);
+      state.player.actions.idle.play();
+      state.player.currentAction = state.player.actions.idle;
+    }
+    if (walkClip) state.player.actions.walk = mixer.clipAction(walkClip);
+  }
+
+  checkLoaded();
+}, (p) => {
+  if (p.total) updateLoading(`Загрузка персонажа: ${Math.round(p.loaded / p.total * 100)}%`);
+}, (err) => {
+  showError('Ошибка shell.glb: ' + (err?.message || err));
+  // Fallback-капсула, чтобы игра всё-таки запустилась
+  const g = new THREE.Group();
+  const cap = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.4, 0.8, 4, 8),
+    new THREE.MeshStandardMaterial({ color: 0x44aaff })
+  );
+  cap.position.y = 0.8;
+  g.add(cap);
+  g.position.copy(state.player.position);
+  scene.add(g);
+  state.player.mesh = g;
+  checkLoaded();
+});
+
+// =========================================================
+// 7) ФИЗИКА
+// =========================================================
+// Возвращает Y земли или null, если под точкой ничего нет
+function findGroundHeight(x, z) {
+  if (!state.map) return null;
+  raycaster.set(new THREE.Vector3(x, 200, z), DOWN);
+  raycaster.far = 500;
+  const hits = raycaster.intersectObject(state.map, true);
+  return hits.length ? hits[0].point.y : null;
+}
+
+function isDescendantOf(obj, ancestor) {
+  let p = obj;
+  while (p) { if (p === ancestor) return true; p = p.parent; }
+  return false;
+}
+
+function updatePhysics(dt) {
+  const p = state.player;
+  const cam = state.camera;
+
+  const forward = new THREE.Vector3(-Math.sin(cam.orbitYaw), 0, -Math.cos(cam.orbitYaw));
+  const right   = new THREE.Vector3( Math.cos(cam.orbitYaw), 0, -Math.sin(cam.orbitYaw));
+
+  const moveDir = new THREE.Vector3();
+  moveDir.addScaledVector(forward, state.input.forward);
+  moveDir.addScaledVector(right,   state.input.right);
+  const isMoving = moveDir.lengthSq() > 0.0001;
+  if (isMoving) moveDir.normalize();
+
+  const control = p.grounded ? 1 : AIR_CONTROL;
+  const delta = moveDir.clone().multiplyScalar(MOVE_SPEED * control * dt);
+
+  // Коллизии со стенами
+  if (isMoving && state.map && delta.lengthSq() > 0) {
+    const origin = p.position.clone().add(new THREE.Vector3(0, PLAYER_HEIGHT * 0.5, 0));
+    raycaster.set(origin, delta.clone().normalize());
+    raycaster.far = PLAYER_RADIUS + delta.length();
+    const hits = raycaster.intersectObject(state.map, true).filter(h =>
+      h.point.y > p.position.y + 0.25 && h.point.y < p.position.y + PLAYER_HEIGHT * 0.9
+    );
+
+    if (hits.length === 0) {
+      p.position.x += delta.x;
+      p.position.z += delta.z;
+    } else {
+      // Скольжение по осям
+      if (Math.abs(delta.x) > 1e-4) {
+        raycaster.set(origin, new THREE.Vector3(Math.sign(delta.x), 0, 0));
+        raycaster.far = Math.abs(delta.x) + PLAYER_RADIUS;
+        const xh = raycaster.intersectObject(state.map, true).filter(h =>
+          h.point.y > p.position.y + 0.25 && h.point.y < p.position.y + PLAYER_HEIGHT * 0.9
+        );
+        if (xh.length === 0) p.position.x += delta.x;
+      }
+      if (Math.abs(delta.z) > 1e-4) {
+        raycaster.set(origin, new THREE.Vector3(0, 0, Math.sign(delta.z)));
+        raycaster.far = Math.abs(delta.z) + PLAYER_RADIUS;
+        const zh = raycaster.intersectObject(state.map, true).filter(h =>
+          h.point.y > p.position.y + 0.25 && h.point.y < p.position.y + PLAYER_HEIGHT * 0.9
+        );
+        if (zh.length === 0) p.position.z += delta.z;
+      }
+    }
+  }
+
+  // Гравитация
+  p.velocity.y -= GRAVITY * dt;
+  p.position.y += p.velocity.y * dt;
+
+  // Земля
+  const groundY = findGroundHeight(p.position.x, p.position.z);
+  if (groundY !== null && p.position.y <= groundY) {
+    p.position.y = groundY;
+    p.velocity.y = 0;
+    p.grounded = true;
+  } else {
+    p.grounded = false;
+  }
+
+  // Прыжок (с буфером ввода)
+  if (state.input.jumpBuffer > 0) {
+    state.input.jumpBuffer -= dt;
+    if (p.grounded) {
+      p.velocity.y = JUMP_SPEED;
+      p.grounded = false;
+      state.input.jumpBuffer = 0;
+    }
+  }
+
+  // Респавн если упал с платформы
+  if (p.position.y < FALL_RESPAWN_Y) {
+    p.position.copy(p.spawnPoint);
+    p.velocity.set(0, 0, 0);
+    p.grounded = false;
+  }
+
+  // Меш
+  if (p.mesh) {
+    p.mesh.position.copy(p.position);
+    if (isMoving) p.targetYaw = Math.atan2(moveDir.x, moveDir.z) + MODEL_FORWARD_OFFSET;
+    let diff = p.targetYaw - p.mesh.rotation.y;
+    while (diff >  Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    p.mesh.rotation.y += diff * Math.min(1, dt * 12);
+  }
+}
+
+// =========================================================
+// 8) АНИМАЦИИ
+// =========================================================
+function updateAnimation(dt) {
+  const p = state.player;
+  if (!p.mixer) return;
+  p.mixer.update(dt);
+  const moving = Math.abs(state.input.forward) > 0.01 || Math.abs(state.input.right) > 0.01;
+  const target = moving ? p.actions.walk : p.actions.idle;
+  if (target && target !== p.currentAction) {
+    if (p.currentAction) p.currentAction.fadeOut(0.15);
+    target.reset().fadeIn(0.15).play();
+    p.currentAction = target;
+  }
+}
+
+// =========================================================
+// 9) КАМЕРА ОТ ТРЕТЬЕГО ЛИЦА
+// =========================================================
+function updateCamera(dt) {
+  const cam = state.camera;
+  const p = state.player;
+
+  cam.target.lerp(p.position.clone().add(new THREE.Vector3(0, 1.2, 0)), Math.min(1, dt * 12));
+
+  const hd = Math.cos(cam.orbitPitch) * cam.distance;
+  const vd = Math.sin(cam.orbitPitch) * cam.distance;
+  const desired = new THREE.Vector3(
+    cam.target.x + Math.sin(cam.orbitYaw) * hd,
+    cam.target.y + vd,
+    cam.target.z + Math.cos(cam.orbitYaw) * hd
+  );
+
+  camera.position.lerp(desired, Math.min(1, dt * 15));
+  camera.lookAt(cam.target);
+}
+
+// =========================================================
+// 10) КНОПКИ / D-PAD / JUMP
+// =========================================================
+const dpad = { up: false, down: false, left: false, right: false };
+
+function bindButton(el, onDown, onUp) {
+  const down = e => { e.preventDefault(); onDown(); el.classList.add('active'); };
+  const up   = e => { e.preventDefault(); onUp();   el.classList.remove('active'); };
+  el.addEventListener('touchstart', down, { passive: false });
+  el.addEventListener('touchend', up,   { passive: false });
+  el.addEventListener('touchcancel', up,{ passive: false });
+  el.addEventListener('mousedown', down);
+  el.addEventListener('mouseup', up);
+  el.addEventListener('mouseleave', up);
+}
+
+bindButton(document.getElementById('dpad-up'),    () => dpad.up = true,    () => dpad.up = false);
+bindButton(document.getElementById('dpad-down'),  () => dpad.down = true,  () => dpad.down = false);
+bindButton(document.getElementById('dpad-left'),  () => dpad.left = true,  () => dpad.left = false);
+bindButton(document.getElementById('dpad-right'), () => dpad.right = true, () => dpad.right = false);
+bindButton(document.getElementById('jump-btn'),   () => { state.input.jumpBuffer = 0.15; }, () => {});
+
+function updateInputFromButtons() {
+  state.input.forward = (dpad.up ? 1 : 0) - (dpad.down ? 1 : 0);
+  state.input.right   = (dpad.right ? 1 : 0) - (dpad.left ? 1 : 0);
+}
+
+// =========================================================
+// 11) ТАЧ-УПРАВЛЕНИЕ КАМЕРОЙ (свайп + пинч + tap)
+// =========================================================
+const activeTouches = new Map();
+let pinchState = { active: false, startDist: 0, startZoom: 1 };
+let tapInfo = { active: false, startTime: 0, startX: 0, startY: 0, moved: false };
+
+canvas.addEventListener('touchstart', (e) => {
+  if (dev.transformControls && dev.transformControls.dragging) return;
+  for (const t of e.changedTouches) activeTouches.set(t.identifier, { x: t.clientX, y: t.clientY });
+
+  if (activeTouches.size === 1) {
+    const t = e.changedTouches[0];
+    tapInfo = { active: true, startTime: Date.now(), startX: t.clientX, startY: t.clientY, moved: false };
+  }
+  if (activeTouches.size === 2) {
+    const ts = [...activeTouches.values()];
+    pinchState.active = true;
+    pinchState.startDist = Math.hypot(ts[0].x - ts[1].x, ts[0].y - ts[1].y);
+    pinchState.startZoom = state.camera.distance;
+    tapInfo.active = false;
+  }
+}, { passive: true });
+
+canvas.addEventListener('touchmove', (e) => {
+  if (dev.transformControls && dev.transformControls.dragging) return;
+  for (const t of e.changedTouches) {
+    const prev = activeTouches.get(t.identifier);
+    if (!prev) continue;
+    const dx = t.clientX - prev.x;
+    const dy = t.clientY - prev.y;
+
+    if (activeTouches.size === 1) {
+      if (dev.mode === 'coords') {
+        dev.freeCam.yaw   -= dx * 0.006;
+        dev.freeCam.pitch = Math.max(-1.4, Math.min(1.4, dev.freeCam.pitch - dy * 0.006));
+      } else {
+        state.camera.orbitYaw   -= dx * 0.006;
+        state.camera.orbitPitch  = Math.max(-0.2, Math.min(1.3, state.camera.orbitPitch + dy * 0.006));
+      }
+      if (Math.hypot(t.clientX - tapInfo.startX, t.clientY - tapInfo.startY) > 10) tapInfo.moved = true;
+    }
+    prev.x = t.clientX; prev.y = t.clientY;
+  }
+  if (activeTouches.size === 2 && pinchState.active) {
+    const ts = [...activeTouches.values()];
+    const d = Math.hypot(ts[0].x - ts[1].x, ts[0].y - ts[1].y);
+    if (pinchState.startDist > 1 && d > 1 && dev.mode !== 'coords') {
+      state.camera.distance = Math.max(2, Math.min(20, pinchState.startZoom * (pinchState.startDist / d)));
+    }
+  }
+}, { passive: true });
+
+canvas.addEventListener('touchend', (e) => {
+  if (dev.transformControls && dev.transformControls.dragging) return;
+  for (const t of e.changedTouches) activeTouches.delete(t.identifier);
+  if (activeTouches.size < 2) pinchState.active = false;
+
+  if (tapInfo.active && !tapInfo.moved && Date.now() - tapInfo.startTime < 350 && activeTouches.size === 0) {
+    const t = e.changedTouches[0];
+    handleTap(t.clientX, t.clientY);
+  }
+  if (activeTouches.size === 0) tapInfo.active = false;
+}, { passive: true });
+
+canvas.addEventListener('touchcancel', (e) => {
+  for (const t of e.changedTouches) activeTouches.delete(t.identifier);
+  if (activeTouches.size < 2) pinchState.active = false;
+  tapInfo.active = false;
+}, { passive: true });
+
+// =========================================================
+// 12) DEV-РЕЖИМ
+// =========================================================
+const dev = {
+  mode: 'play', // 'play' | 'coords' | 'editor'
+  freeCam: { pos: new THREE.Vector3(), yaw: 0, pitch: 0 },
+  transformControls: null,
+  selectedObject: null,
+};
+
+const devToolsEl  = document.getElementById('dev-tools');
+const devInfoEl   = document.getElementById('dev-info');
+const coordPopup  = document.getElementById('coord-popup');
+const btnCoords   = document.getElementById('btn-coords');
+const btnEditor   = document.getElementById('btn-editor');
+const btnSave     = document.getElementById('btn-save');
+const btnExport   = document.getElementById('btn-export');
+const btnReset    = document.getElementById('btn-reset');
+const gizmoBtns   = document.querySelectorAll('.gizmo-btn');
+
+if (isDev) { devToolsEl.classList.add('visible'); devInfoEl.classList.add('visible'); }
+
+function setDevMode(mode) {
+  dev.mode = mode;
+  btnCoords.classList.toggle('active', mode === 'coords');
+  btnEditor.classList.toggle('active', mode === 'editor');
+
+  if (mode === 'coords') {
+    dev.freeCam.pos.copy(camera.position);
+    const dir = camera.getWorldDirection(new THREE.Vector3());
+    dev.freeCam.yaw   = Math.atan2(-dir.x, -dir.z);
+    dev.freeCam.pitch = Math.asin(Math.max(-1, Math.min(1, dir.y)));
+    if (dev.transformControls) dev.transformControls.detach();
+    dev.selectedObject = null;
+  }
+  if (mode !== 'editor' && dev.transformControls) {
+    dev.transformControls.detach();
+    dev.selectedObject = null;
+  }
+}
+
+btnCoords.addEventListener('click', () => setDevMode(dev.mode === 'coords' ? 'play' : 'coords'));
+
+btnEditor.addEventListener('click', () => {
+  if (dev.mode === 'editor') { setDevMode('play'); return; }
+  setDevMode('editor');
+  if (!dev.transformControls) {
+    const tc = new TransformControls(camera, renderer.domElement);
+    if (tc.getHelper) scene.add(tc.getHelper()); else scene.add(tc);
+    tc.addEventListener('dragging-changed', (e) => {
+      if (!e.value && dev.selectedObject) snapObjectToGround(dev.selectedObject);
+    });
+    dev.transformControls = tc;
+  }
+});
+
+gizmoBtns.forEach(b => b.addEventListener('click', () => {
+  if (!dev.transformControls) return;
+  if (b.id === 'btn-gizmo-translate') dev.transformControls.setMode('translate');
+  if (b.id === 'btn-gizmo-rotate')    dev.transformControls.setMode('rotate');
+  if (b.id === 'btn-gizmo-scale')     dev.transformControls.setMode('scale');
+}));
+
+btnSave.addEventListener('click', () => {
+  const data = collectObjectTransforms();
+  localStorage.setItem('savedObjects', JSON.stringify(data));
+  alert('Сохранено объектов: ' + Object.keys(data).length);
+});
+
+btnExport.addEventListener('click', () => {
+  const data = collectObjectTransforms();
+  const code = 'const SAVED_OBJECTS = ' + JSON.stringify(data, null, 2) + ';';
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(code)
+      .then(() => alert('Скопировано в буфер (' + Object.keys(data).length + ' об.)'))
+      .catch(() => showExportDialog(code));
+  } else {
+    showExportDialog(code);
+  }
+});
+
+btnReset.addEventListener('click', () => {
+  if (confirm('Сбросить все сохранённые позиции?')) {
+    localStorage.removeItem('savedObjects');
+    location.reload();
+  }
+});
+
+function showExportDialog(code) {
+  const ta = document.createElement('textarea');
+  ta.value = code;
+  ta.style.cssText = 'position:fixed;top:10%;left:5%;width:90%;height:75%;z-index:10000;font-size:10px;padding:10px;';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  const close = document.createElement('button');
+  close.textContent = 'Закрыть';
+  close.style.cssText = 'position:fixed;top:2%;right:5%;z-index:10001;padding:8px 14px;';
+  close.onclick = () => { ta.remove(); close.remove(); };
+  document.body.appendChild(close);
+}
+
+// -------------------- Вспомогательные функции редактора --------------------
+function collectObjectTransforms() {
+  const out = {};
+  if (!state.map) return out;
+  state.map.traverse(o => {
+    if (o.isMesh && o.userData.editId && o.userData.edited) {
+      out[o.userData.editId] = {
+        pos:   o.position.toArray().map(v => +v.toFixed(3)),
+        rot:   [o.rotation.x, o.rotation.y, o.rotation.z].map(v => +v.toFixed(4)),
+        scale: o.scale.toArray().map(v => +v.toFixed(3)),
+      };
+    }
+  });
+  return out;
+}
+
+function applySavedObjects() {
+  if (!state.map) return;
+  let data = null;
+  try {
+    const ls = JSON.parse(localStorage.getItem('savedObjects') || 'null');
+    if (ls && Object.keys(ls).length) data = ls;
+  } catch(e) {}
+  if (!data && SAVED_OBJECTS && Object.keys(SAVED_OBJECTS).length) data = SAVED_OBJECTS;
+  if (!data) return;
+
+  state.map.traverse(o => {
+    if (o.isMesh && o.userData.editId && data[o.userData.editId]) {
+      const d = data[o.userData.editId];
+      o.position.fromArray(d.pos);
+      o.rotation.set(d.rot[0], d.rot[1], d.rot[2]);
+      o.scale.fromArray(d.scale);
+      o.userData.edited = true;
+    }
+  });
+}
+
+// Авто-установка объекта на землю (по Bounding Box)
+function snapObjectToGround(obj) {
+  if (!state.map || !obj) return;
+  obj.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(obj);
+  if (box.isEmpty()) return;
+
+  const center = box.getCenter(new THREE.Vector3());
+
+  raycaster.set(new THREE.Vector3(center.x, box.max.y + 5, center.z), DOWN);
+  raycaster.far = 1000;
+  const hits = raycaster.intersectObject(state.map, true).filter(h => !isDescendantOf(h.object, obj));
+
+  if (hits.length) {
+    const groundY = hits[0].point.y;
+    obj.position.y += groundY - box.min.y;
+    obj.userData.edited = true;
+  }
+}
+
+// -------------------- Тап по экрану --------------------
+function handleTap(x, y) {
+  const ndc = new THREE.Vector2(
+    (x / innerWidth) * 2 - 1,
+    -(y / innerHeight) * 2 + 1
+  );
+
+  if (dev.mode === 'coords') {
+    raycaster.setFromCamera(ndc, camera);
+    raycaster.far = 1000;
+    const hits = raycaster.intersectObjects(scene.children, true);
+    if (hits.length) {
+      const p = hits[0].point;
+      coordPopup.textContent = `X: ${p.x.toFixed(2)}\nY: ${p.y.toFixed(2)}\nZ: ${p.z.toFixed(2)}`;
+      coordPopup.classList.add('visible');
+      setTimeout(() => coordPopup.classList.remove('visible'), 2500);
+    }
+  } else if (dev.mode === 'editor' && state.map) {
+    raycaster.setFromCamera(ndc, camera);
+    raycaster.far = 1000;
+    const hits = raycaster.intersectObject(state.map, true);
+    if (hits.length) {
+      dev.selectedObject = hits[0].object;
+      dev.selectedObject.userData.edited = true;
+      dev.transformControls.attach(dev.selectedObject);
+    } else {
+      dev.selectedObject = null;
+      dev.transformControls.detach();
+    }
+  }
+}
+
+// -------------------- Полёт камеры в режиме «Координаты» --------------------
+function updateFreeCamera(dt) {
+  const fc = dev.freeCam;
+  const fwd = new THREE.Vector3(
+    -Math.sin(fc.yaw) * Math.cos(fc.pitch),
+     Math.sin(fc.pitch),
+    -Math.cos(fc.yaw) * Math.cos(fc.pitch)
+  );
+  const rgt = new THREE.Vector3(Math.cos(fc.yaw), 0, -Math.sin(fc.yaw));
+
+  const speed = 8;
+  fc.pos.addScaledVector(fwd, state.input.forward * speed * dt);
+  fc.pos.addScaledVector(rgt, state.input.right   * speed * dt);
+
+  camera.position.copy(fc.pos);
+  camera.lookAt(fc.pos.clone().add(fwd));
+}
+
+// =========================================================
+// 13) ГЛАВНЫЙ ЦИКЛ
+// =========================================================
+let lastTime = performance.now();
+let frameCount = 0, fpsTime = 0, fps = 60;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.1) dt = 0.1;
+
+  frameCount++; fpsTime += dt;
+  if (fpsTime >= 0.5) { fps = Math.round(frameCount / fpsTime); frameCount = 0; fpsTime = 0; }
+
+  updateInputFromButtons();
+
+  if (dev.mode === 'coords') {
+    updateFreeCamera(dt);
+  } else {
+    updatePhysics(dt);
+    updateAnimation(dt);
+    updateCamera(dt);
+  }
+
+  if (dev.transformControls) dev.transformControls.update();
+
+  if (isDev) {
+    devInfoEl.textContent =
+      `FPS: ${fps}\n` +
+      `Mode: ${dev.mode}\n` +
+      `P: ${state.player.position.x.toFixed(1)}, ${state.player.position.y.toFixed(1)}, ${state.player.position.z.toFixed(1)}\n` +
+      `Grounded: ${state.player.grounded ? 'Y' : 'N'}` +
+      (dev.selectedObject ? `\nSel: ${dev.selectedObject.userData.editId || '?'}` : '');
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// =========================================================
+// 14) RESIZE
+// =========================================================
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
