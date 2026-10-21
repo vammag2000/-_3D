@@ -132,7 +132,7 @@ function showError(msg, isGood = false) {
   errorBox.style.background = isGood ? 'rgba(0, 150, 0, 0.92)' : 'rgba(190, 0, 0, 0.92)';
   errorBox.style.display = 'block';
   clearTimeout(window._errTimeout);
-  window._errTimeout = setTimeout(() => { errorBox.style.display = 'none'; }, 5000);
+  window._errTimeout = setTimeout(() => { errorBox.style.display = 'none'; }, 8000);
   console.log(msg);
 }
 
@@ -151,7 +151,7 @@ const SAVED_OBJECTS = {};
 
 const PLAYER_HEIGHT      = 1.6;
 const PLAYER_RADIUS      = 0.35;
-const MOVE_SPEED         = 4.0; // Чуть замедлил для соответствия анимации
+const MOVE_SPEED         = 4.0; 
 const GRAVITY            = 22.0;
 const JUMP_SPEED         = 8.0;
 const AIR_CONTROL        = 0.45;
@@ -294,22 +294,44 @@ loader.load('shell.glb', (gltf) => {
     const clips = gltf.animations;
 
     if (clips.length === 1) {
-      const clip = clips[0];
+      // РАЗРЕЗАЕМ КЛИП (СНАЧАЛА WALK, ПОТОМ IDLE)
+      const rawClip = clips[0];
+      const fps = 30; // Стандартный FPS
+      const totalFrames = Math.floor(rawClip.duration * fps);
+      const half = Math.floor(totalFrames / 2);
       
-      // Вырезаем смещение по X и Z, чтобы убрать телепортацию
-      clip.tracks.forEach(track => {
-        if (track.name.endsWith('.position')) {
-          for (let i = 0; i < track.values.length; i += 3) {
-            track.values[i] = 0;       // X
-            track.values[i + 2] = 0;   // Z
-          }
-        }
-      });
+      // Первая половина - Walk, вторая - Idle
+      let walkClip = THREE.AnimationUtils.subclip(rawClip, 'Walk', 0, half, fps);
+      let idleClip = THREE.AnimationUtils.subclip(rawClip, 'Idle', half, totalFrames, fps);
+      
+      // ОЧИСТКА ОТ НАКЛОНОВ И СМЕЩЕНИЙ (Root Motion)
+      const cleanClip = (clip) => {
+        clip.tracks = clip.tracks.filter(t => {
+          if (t.name.includes('Armature') && t.name.includes('.quaternion')) return false;
+          if (t.name.includes('Root') && t.name.includes('.quaternion')) return false;
+          return true;
+        });
 
-      state.player.actions.walk = mixer.clipAction(clip);
-      showError("Анимация ходьбы активна.", true);
+        clip.tracks.forEach(t => {
+          if (t.name.endsWith('.position')) {
+            for (let i = 0; i < t.values.length; i += 3) {
+              t.values[i] = 0;     // Обнуляем X
+              t.values[i+2] = 0;   // Обнуляем Z
+            }
+          }
+        });
+      };
+      
+      cleanClip(walkClip);
+      cleanClip(idleClip);
+
+      state.player.actions.idle = mixer.clipAction(idleClip);
+      state.player.actions.walk = mixer.clipAction(walkClip);
+      state.player.actions.idle.play();
+      state.player.currentAction = state.player.actions.idle;
+      
+      showError("Клип разрезан: Walk (1-я часть) + Idle (2-я часть).", true);
     } else {
-      // Стандартный экспорт (2+ анимации)
       const findClip = (kw) => clips.find(c => c.name.toLowerCase().includes(kw));
       let idleClip = findClip('idle') || findClip('stand') || clips[0];
       let walkClip = findClip('walk') || findClip('run') || clips[1];
@@ -322,6 +344,7 @@ loader.load('shell.glb', (gltf) => {
       if (walkClip) {
         state.player.actions.walk = mixer.clipAction(walkClip);
       }
+      showError("Загружены 2+ анимации.", true);
     }
   } else {
     showError("В файле НЕТ анимаций! Включена псевдо-анимация.");
@@ -429,26 +452,6 @@ function updatePhysics(dt) {
     while (diff >  Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
     p.mesh.rotation.y += diff * Math.min(1, dt * 12);
-
-    // ПРИНУДИТЕЛЬНОЕ ВЫПРЯМЛЕНИЕ МОДЕЛИ
-    // Отключаем наклоны вперед/назад/в стороны, которые заложены в анимации
-    if (p.mesh.children.length > 0) {
-      const model = p.mesh.children[0];
-      model.rotation.x = 0;
-      model.rotation.z = 0;
-    }
-
-    // Псевдо-анимация, если НЕТ реальных анимаций
-    if (!p.mixer && p.mesh.children.length > 0) {
-      const model = p.mesh.children[0];
-      if (isMoving && p.grounded) {
-        p.walkCycle += dt * 12; 
-        model.position.y = p.modelBaseY + Math.abs(Math.sin(p.walkCycle)) * 0.08; 
-      } else {
-        p.walkCycle = 0;
-        model.position.y += (p.modelBaseY - model.position.y) * Math.min(1, dt * 10);
-      }
-    }
   }
 }
 
@@ -458,19 +461,14 @@ function updateAnimation(dt) {
   
   const isMoving = Math.abs(state.input.forward) > 0.01 || Math.abs(state.input.right) > 0.01;
 
-  // Настраиваем скорость анимации в зависимости от движения
-  if (p.actions.walk) {
-    p.actions.walk.setEffectiveTimeScale(isMoving ? 1.0 : 0.0); // 1.0 - нормальная скорость, 0 - стоп
-  }
-
   p.mixer.update(dt);
-  
-  if (p.actions.walk) {
-    if (isMoving && !p.actions.walk.isRunning()) {
-      p.actions.walk.reset().fadeIn(0.2).play();
-    } else if (!isMoving && p.actions.walk.isRunning()) {
-      p.actions.walk.fadeOut(0.2);
-    }
+
+  const targetAction = isMoving ? p.actions.walk : p.actions.idle;
+
+  if (targetAction && targetAction !== p.currentAction) {
+    if (p.currentAction) p.currentAction.fadeOut(0.2);
+    targetAction.reset().fadeIn(0.2).play();
+    p.currentAction = targetAction;
   }
 }
 
