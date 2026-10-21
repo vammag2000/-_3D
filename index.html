@@ -279,7 +279,7 @@ loader.load('shell.glb', (gltf) => {
   model.position.x = -center.x;
   model.position.z = -center.z;
   model.position.y = -box.min.y + PLAYER_Y_OFFSET;
-  state.player.modelBaseY = model.position.y; // Запоминаем высоту для псевдо-анимации
+  state.player.modelBaseY = model.position.y; 
 
   const group = new THREE.Group();
   group.add(model);
@@ -292,13 +292,19 @@ loader.load('shell.glb', (gltf) => {
     state.player.mixer = mixer;
     const clips = gltf.animations;
     
-    // Выводим зеленым цветом список найденных анимаций
     showError("Найдены анимации:\n" + clips.map(a => a.name).join(" | "), true);
 
     const findClip = (kw) => clips.find(c => c.name.toLowerCase().includes(kw));
-    // Если точного совпадения нет, берем первую для Idle и вторую для Walk (если есть)
-    const idleClip = findClip('idle') || findClip('stand') || clips[0];
-    const walkClip = findClip('walk') || findClip('run') || findClip('move') || clips[1] || clips[0];
+    let idleClip = findClip('idle') || clips[0];
+    let walkClip = findClip('walk') || findClip('run') || clips[1];
+
+    // Защита: если анимация всего одна, используем её только для Idle,
+    // чтобы персонаж не "слайдил" при движении.
+    if (clips.length === 1) {
+      idleClip = clips[0];
+      walkClip = null;
+      showError("ВНИМАНИЕ: В файле только 1 анимация. Для ходьбы нужна вторая (Walk).", false);
+    }
 
     if (idleClip) {
       state.player.actions.idle = mixer.clipAction(idleClip);
@@ -415,7 +421,7 @@ function updatePhysics(dt) {
     while (diff < -Math.PI) diff += Math.PI * 2;
     p.mesh.rotation.y += diff * Math.min(1, dt * 12);
 
-    // Если НЕТ реальных анимаций (mixer == null), делаем покачивание (bobbing)
+    // Псевдо-анимация, если НЕТ реального mixer (или если есть только 1 клип)
     if (!p.mixer && p.mesh.children.length > 0) {
       const model = p.mesh.children[0];
       if (isMoving && p.grounded) {
@@ -435,10 +441,14 @@ function updatePhysics(dt) {
 
 function updateAnimation(dt) {
   const p = state.player;
-  if (!p.mixer) return; // Если анимаций нет, выходим
+  if (!p.mixer) return; 
   p.mixer.update(dt);
 
   const isMoving = Math.abs(state.input.forward) > 0.01 || Math.abs(state.input.right) > 0.01;
+  
+  // Если у нас нет отдельной Walk анимации, мы просто не переключаемся
+  if (!p.actions.walk) return;
+
   const target = isMoving ? p.actions.walk : p.actions.idle;
 
   if (target && target !== p.currentAction) {
