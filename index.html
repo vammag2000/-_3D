@@ -149,14 +149,14 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 const isDev = new URLSearchParams(location.search).get('dev') === '1';
 const SAVED_OBJECTS = {};
 
-// --- ФИЗИЧЕСКИЕ КОНСТАНТЫ (ГИПЕРРЕАЛИЗМ) ---
-const MAX_SPEED          = 7.0;   // Максимальная скорость шара
-const ACCELERATION       = 25.0;  // Ускорение при нажатии кнопки
-const FRICTION           = 3.0;   // Трение (как быстро шар останавливается)
-const GRAVITY            = 22.0;  // Гравитация
-const JUMP_SPEED         = 8.0;   // Сила прыжка
-const FALL_RESPAWN_Y     = -20;   // Высота падения для респавна
-const WALL_BOUNCE        = 0.2;   // Упругость стен (0.2 = 20% отскока)
+// --- ФИЗИЧЕСКИЕ КОНСТАНТЫ ---
+const MAX_SPEED          = 7.0;   
+const ACCELERATION       = 25.0;  
+const FRICTION           = 3.0;   
+const GRAVITY            = 22.0;  
+const JUMP_SPEED         = 8.0;   
+const FALL_RESPAWN_Y     = -20;   
+const WALL_BOUNCE        = 0.2;   
 
 // =========================================================
 // 3) THREE.JS БАЗА
@@ -202,7 +202,7 @@ if (isDev) {
 const state = {
   player: {
     mesh: null,
-    radius: 0.5, // Радиус определится при загрузке
+    radius: 0.5, 
     position: new THREE.Vector3(0, 0, 0),
     velocity: new THREE.Vector3(),
     grounded: false,
@@ -243,7 +243,6 @@ loader.load('zov.glb', (gltf) => {
   const spawnY = findGroundHeight(0, 0);
   const sy = (spawnY !== null) ? spawnY : 0;
   
-  // Ставим шар на землю (Y = высота земли + радиус шара)
   state.player.spawnPoint.set(0, sy + state.player.radius, 0);
   state.player.position.copy(state.player.spawnPoint);
   if (state.player.mesh) state.player.mesh.position.copy(state.player.position);
@@ -265,28 +264,23 @@ loader.load('shell.glb', (gltf) => {
     }
   });
 
-  // 1. Вычисляем габариты и радиус
   model.updateMatrixWorld(true);
   let box = new THREE.Box3().setFromObject(model);
   let size = box.getSize(new THREE.Vector3());
-  state.player.radius = size.y / 2.0; // Берем половину высоты как радиус
+  state.player.radius = size.y / 2.0; 
 
-  // 2. Центрируем модель строго по центру её группы
   const center = box.getCenter(new THREE.Vector3());
-  model.position.sub(center); // Сдвигаем меш так, чтобы его центр был в (0,0,0)
+  model.position.sub(center); 
 
-  // 3. Создаем группу для шара
   const group = new THREE.Group();
   group.add(model);
   scene.add(group);
   state.player.mesh = group;
 
-  // Обновляем точку спавна с учетом радиуса
   state.player.position.y = findGroundHeight(0, 0) + state.player.radius;
   group.position.copy(state.player.position);
 
   showError(`Сфера загружена. Радиус: ${state.player.radius.toFixed(2)}`, true);
-
   checkLoaded();
 }, undefined, (err) => {
   showError('Ошибка shell.glb: ' + err.message);
@@ -314,43 +308,35 @@ function updatePhysics(dt) {
   const p = state.player;
   const cam = state.camera;
 
-  // 1. Векторы направления относительно камеры
   const forward = new THREE.Vector3(-Math.sin(cam.orbitYaw), 0, -Math.cos(cam.orbitYaw));
   const right   = new THREE.Vector3( Math.cos(cam.orbitYaw), 0, -Math.sin(cam.orbitYaw));
 
-  // 2. Вектор желаемого движения (на основе нажатий)
   const inputDir = new THREE.Vector3();
   inputDir.addScaledVector(forward, state.input.forward);
   inputDir.addScaledVector(right,   state.input.right);
   const hasInput = inputDir.lengthSq() > 0.0001;
   if (hasInput) inputDir.normalize();
 
-  // 3. УСКОРЕНИЕ И ТРЕНИЕ (Гиперреализм)
   if (hasInput) {
-    // Ускоряем шар в сторону нажатия
     p.velocity.x += inputDir.x * ACCELERATION * dt;
     p.velocity.z += inputDir.z * ACCELERATION * dt;
 
-    // Ограничиваем максимальную скорость
     const horizSpeed = Math.hypot(p.velocity.x, p.velocity.z);
     if (horizSpeed > MAX_SPEED) {
       p.velocity.x = (p.velocity.x / horizSpeed) * MAX_SPEED;
       p.velocity.z = (p.velocity.z / horizSpeed) * MAX_SPEED;
     }
   } else {
-    // Трение (если нет ввода)
     const frictionFactor = Math.max(0, 1 - FRICTION * dt);
     p.velocity.x *= frictionFactor;
     p.velocity.z *= frictionFactor;
     
-    // Полная остановка при очень малой скорости
     if (Math.hypot(p.velocity.x, p.velocity.z) < 0.1) {
       p.velocity.x = 0;
       p.velocity.z = 0;
     }
   }
 
-  // 4. Движение по осям с проверкой коллизий (стены)
   const deltaX = p.velocity.x * dt;
   const deltaZ = p.velocity.z * dt;
   
@@ -367,7 +353,7 @@ function updatePhysics(dt) {
       );
       
       if (hits.length > 0) {
-        p.velocity.x *= -WALL_BOUNCE; // Отскок от стены
+        p.velocity.x *= -WALL_BOUNCE; 
       } else {
         p.position.x += deltaX;
       }
@@ -383,14 +369,13 @@ function updatePhysics(dt) {
       );
       
       if (hits.length > 0) {
-        p.velocity.z *= -WALL_BOUNCE; // Отскок от стены
+        p.velocity.z *= -WALL_BOUNCE; 
       } else {
         p.position.z += deltaZ;
       }
     }
   }
 
-  // 5. Гравитация и Прыжок
   p.velocity.y -= GRAVITY * dt;
   
   if (state.input.jumpBuffer > 0) {
@@ -404,43 +389,34 @@ function updatePhysics(dt) {
 
   p.position.y += p.velocity.y * dt;
 
-  // 6. Проверка земли
   const groundY = findGroundHeight(p.position.x, p.position.z);
   if (groundY !== null && p.position.y - p.radius <= groundY) {
-    p.position.y = groundY + p.radius; // Ставим ровно на землю
+    p.position.y = groundY + p.radius;
     p.velocity.y = 0;
     p.grounded = true;
   } else {
     p.grounded = false;
   }
 
-  // 7. Респавн при падении
   if (p.position.y < FALL_RESPAWN_Y) {
     p.position.copy(p.spawnPoint);
     p.velocity.set(0, 0, 0);
     p.grounded = false;
   }
 
-  // 8. ВРАЩЕНИЕ ШАРА (Реалистичное качение)
+  // ВРАЩЕНИЕ ШАРА
   if (p.mesh) {
     p.mesh.position.copy(p.position);
 
-    // Вычисляем пройденный путь за этот кадр
     const distX = p.velocity.x * dt;
     const distZ = p.velocity.z * dt;
     const distance = Math.hypot(distX, distZ);
 
     if (distance > 0.0001) {
-      // Направление движения
       const moveDir = new THREE.Vector3(distX, 0, distZ).normalize();
-      
-      // Ось вращения = перпендикуляр к направлению движения (Векторное произведение Вверх x Направление)
       const rotAxis = new THREE.Vector3().crossVectors(UP, moveDir).normalize();
-      
-      // Угол поворота = Пройденный путь / Радиус
       const angle = distance / p.radius;
       
-      // Применяем поворот (пре-мультипликация для локального вращения)
       const q = new THREE.Quaternion().setFromAxisAngle(rotAxis, angle);
       p.mesh.quaternion.premultiply(q);
     }
@@ -450,8 +426,6 @@ function updatePhysics(dt) {
 function updateCamera(dt) {
   const cam = state.camera;
   const p = state.player;
-  
-  // Камера смотрит чуть выше центра шара
   cam.target.lerp(p.position.clone().add(new THREE.Vector3(0, p.radius, 0)), Math.min(1, dt * 12));
 
   const hd = Math.cos(cam.orbitPitch) * cam.distance;
@@ -606,7 +580,9 @@ btnEditor.addEventListener('click', () => {
   setDevMode('editor');
   if (!dev.transformControls) {
     const tc = new TransformControls(camera, renderer.domElement);
+    // Важно: добавляем в сцену именно helper, так как в r160 TC не наследуется от Object3D
     if (tc.getHelper) scene.add(tc.getHelper()); else scene.add(tc);
+    
     tc.addEventListener('dragging-changed', (e) => {
       if (!e.value && dev.selectedObject) snapObjectToGround(dev.selectedObject);
     });
@@ -783,7 +759,8 @@ function animate() {
     updateCamera(dt);
   }
 
-  if (dev.transformControls) dev.transformControls.update();
+  // ОШИБКА БЫЛА ЗДЕСЬ: dev.transformControls.update() больше не нужен в r160
+  // (Он обновляется автоматически внутри библиотеки Three.js)
 
   if (isDev) {
     sun.position.set(state.player.position.x + 20, state.player.position.y + 40, state.player.position.z + 20);
