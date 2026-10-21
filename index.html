@@ -127,13 +127,13 @@
 // 1) ОБРАБОТКА ОШИБОК
 // =========================================================
 const errorBox = document.getElementById('error-box');
-function showError(msg) {
+function showError(msg, isGood = false) {
   errorBox.textContent = String(msg);
+  errorBox.style.background = isGood ? 'rgba(0, 150, 0, 0.92)' : 'rgba(190, 0, 0, 0.92)';
   errorBox.style.display = 'block';
   clearTimeout(window._errTimeout);
-  // Скрываем через 5 секунд, чтобы не мешать
-  window._errTimeout = setTimeout(() => { errorBox.style.display = 'none'; }, 5000);
-  console.error(msg);
+  window._errTimeout = setTimeout(() => { errorBox.style.display = 'none'; }, isGood ? 8000 : 5000);
+  console.log(msg);
 }
 
 window.onerror = (msg, src, line, col) => { showError(`ERR: ${msg} @ ${line}:${col}`); };
@@ -291,18 +291,25 @@ loader.load('shell.glb', (gltf) => {
     const mixer = new THREE.AnimationMixer(model);
     state.player.mixer = mixer;
     const clips = gltf.animations;
+    
+    // Выводим зеленым цветом список найденных анимаций
+    showError("Найдены анимации:\n" + clips.map(a => a.name).join(" | "), true);
+
     const findClip = (kw) => clips.find(c => c.name.toLowerCase().includes(kw));
+    // Если точного совпадения нет, берем первую для Idle и вторую для Walk (если есть)
     const idleClip = findClip('idle') || findClip('stand') || clips[0];
-    const walkClip = findClip('walk') || findClip('run') || clips[1] || clips[0];
+    const walkClip = findClip('walk') || findClip('run') || findClip('move') || clips[1] || clips[0];
 
     if (idleClip) {
       state.player.actions.idle = mixer.clipAction(idleClip);
       state.player.actions.idle.play();
       state.player.currentAction = state.player.actions.idle;
     }
-    if (walkClip) state.player.actions.walk = mixer.clipAction(walkClip);
+    if (walkClip) {
+      state.player.actions.walk = mixer.clipAction(walkClip);
+    }
   } else {
-    showError("В файле shell.glb НЕТ анимаций! Включена псевдо-анимация покачивания.");
+    showError("В файле shell.glb НЕТ анимаций! Включена псевдо-анимация.");
   }
 
   checkLoaded();
@@ -408,17 +415,16 @@ function updatePhysics(dt) {
     while (diff < -Math.PI) diff += Math.PI * 2;
     p.mesh.rotation.y += diff * Math.min(1, dt * 12);
 
-    // Если нет реальных анимаций, делаем покачивание (bobbing)
+    // Если НЕТ реальных анимаций (mixer == null), делаем покачивание (bobbing)
     if (!p.mixer && p.mesh.children.length > 0) {
       const model = p.mesh.children[0];
       if (isMoving && p.grounded) {
-        p.walkCycle += dt * 12; // Скорость покачивания
-        model.position.y = p.modelBaseY + Math.abs(Math.sin(p.walkCycle)) * 0.08; // Прыгает вверх-вниз
-        model.rotation.z = Math.sin(p.walkCycle) * 0.08; // Наклоняется влево-вправо
-        model.rotation.x = 0.15; // Слегка наклоняется вперед при ходьбе
+        p.walkCycle += dt * 12; 
+        model.position.y = p.modelBaseY + Math.abs(Math.sin(p.walkCycle)) * 0.08; 
+        model.rotation.z = Math.sin(p.walkCycle) * 0.08; 
+        model.rotation.x = 0.15; 
       } else {
         p.walkCycle = 0;
-        // Плавно возвращаем в исходное состояние
         model.position.y += (p.modelBaseY - model.position.y) * Math.min(1, dt * 10);
         model.rotation.z += (0 - model.rotation.z) * Math.min(1, dt * 10);
         model.rotation.x += (0 - model.rotation.x) * Math.min(1, dt * 10);
@@ -429,7 +435,7 @@ function updatePhysics(dt) {
 
 function updateAnimation(dt) {
   const p = state.player;
-  if (!p.mixer) return;
+  if (!p.mixer) return; // Если анимаций нет, выходим
   p.mixer.update(dt);
 
   const isMoving = Math.abs(state.input.forward) > 0.01 || Math.abs(state.input.right) > 0.01;
