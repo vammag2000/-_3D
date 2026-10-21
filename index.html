@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>3D Rolling Ball</title>
+<title>3D Rolling Ball - Dev Mode</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: -apple-system, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -26,6 +26,18 @@
   }
   #loading.hidden { display: none; }
 
+  /* Прицел */
+  #crosshair {
+    position: fixed; top: 50%; left: 50%;
+    width: 24px; height: 24px; transform: translate(-50%, -50%);
+    display: none; z-index: 40; pointer-events: none;
+  }
+  #crosshair::before, #crosshair::after {
+    content: ''; position: absolute; background: #ff3333;
+  }
+  #crosshair::before { top: 50%; left: 0; width: 100%; height: 2px; transform: translateY(-50%); }
+  #crosshair::after { top: 0; left: 50%; width: 2px; height: 100%; transform: translateX(-50%); }
+  
   #dpad { position: fixed; left: 16px; bottom: 16px; width: 150px; height: 150px; z-index: 50; }
   .dpad-btn {
     position: absolute; width: 50px; height: 50px;
@@ -54,7 +66,7 @@
   #dev-tools {
     position: fixed; top: 8px; right: 8px;
     display: none; flex-direction: column; gap: 4px;
-    z-index: 100; max-width: 44vw;
+    z-index: 100; max-width: 45vw;
   }
   #dev-tools.visible { display: flex; }
   #dev-tools button {
@@ -78,11 +90,13 @@
     position: fixed; top: 50%; left: 50%;
     transform: translate(-50%, -50%);
     background: rgba(0,0,0,0.9); color: #0f0;
-    padding: 10px 16px; font-family: monospace; font-size: 13px;
+    padding: 15px 20px; font-family: monospace; font-size: 14px;
     border-radius: 8px; border: 1px solid #0f0;
     display: none; z-index: 200; white-space: pre; text-align: center;
+    cursor: pointer;
   }
   #coord-popup.visible { display: block; }
+  #coord-popup small { color: #888; font-size: 10px; display: block; margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -91,7 +105,8 @@
 <div id="error-box"></div>
 <div id="loading">Загрузка...</div>
 <div id="dev-info"></div>
-<div id="coord-popup"></div>
+<div id="crosshair"></div>
+<div id="coord-popup" onclick="this.classList.remove('visible')"></div>
 
 <div id="dpad">
   <div class="dpad-btn" id="dpad-up">▲</div>
@@ -105,9 +120,10 @@
 <div id="dev-tools">
   <button id="btn-coords">Координаты</button>
   <button id="btn-editor">Редактор</button>
+  <button id="btn-speed">🚀 Скорость: x1</button>
   <button id="btn-gizmo-translate" class="gizmo-btn">↔ Двигать</button>
   <button id="btn-gizmo-rotate" class="gizmo-btn">↻ Вращать</button>
-  <button id="btn-gizmo-scale" class="gizmo-btn">⤢ Масштаб</button>
+  <button id="btn-clone">📄 Клонировать</button>
   <button id="btn-save">💾 Сохранить</button>
   <button id="btn-export">📋 Экспорт кода</button>
   <button id="btn-reset" class="danger">🗑 Сброс</button>
@@ -132,7 +148,7 @@ function showError(msg, isGood = false) {
   errorBox.style.background = isGood ? 'rgba(0, 150, 0, 0.92)' : 'rgba(190, 0, 0, 0.92)';
   errorBox.style.display = 'block';
   clearTimeout(window._errTimeout);
-  window._errTimeout = setTimeout(() => { errorBox.style.display = 'none'; }, 6000);
+  window._errTimeout = setTimeout(() => { errorBox.style.display = 'none'; }, 5000);
   console.log(msg);
 }
 
@@ -147,15 +163,15 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 
 const isDev = new URLSearchParams(location.search).get('dev') === '1';
+
+// ⬇⬇⬇ СЮДА ВСТАВЛЯЙ КОД ИЗ КНОПКИ "ЭКСПОРТ КОДА" ⬇⬇⬇
 const SAVED_OBJECTS = {};
 
-// ⬇⬇⬇ СПИСОК ТВОИХ ФАЙЛОВ УРОВНЯ ⬇⬇⬇
 const LEVEL_FILES = [
-  'zov.glb',       // Твой основной пол
-  'wall.glb'       // Твоя стена
+  'zov.glb',       
+  'wall.glb'       
 ];
 
-// --- ФИЗИЧЕСКИЕ КОНСТАНТЫ ---
 const MAX_SPEED          = 7.0;   
 const ACCELERATION       = 25.0;  
 const FRICTION           = 3.0;   
@@ -197,7 +213,7 @@ scene.add(sun);
 scene.add(sun.target);
 
 if (isDev) {
-  const grid = new THREE.GridHelper(50, 50, 0xff0000, 0x555555);
+  const grid = new THREE.GridHelper(100, 100, 0xff0000, 0x555555);
   grid.position.y = 0.02;
   scene.add(grid);
 }
@@ -229,23 +245,20 @@ const UP = new THREE.Vector3(0, 1, 0);
 const loadingEl = document.getElementById('loading');
 const loader = new GLTFLoader();
 
-// Функция загрузки всех файлов уровня
 async function loadLevel() {
-  state.map = new THREE.Group(); // Создаем общую группу для всех объектов уровня
+  state.map = new THREE.Group();
   scene.add(state.map);
 
   let objectCount = 0;
 
-  // Проходимся по списку файлов и грузим их по очереди
   for (const filename of LEVEL_FILES) {
     try {
       loadingEl.textContent = `Загрузка: ${filename}...`;
       const gltf = await loader.loadAsync(filename);
-      
       const obj = gltf.scene;
       obj.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
       
-      // Даем уникальные ID для редактора
+      // Назначаем изначальные ID
       obj.traverse(o => { if (o.isMesh) o.userData.editId = filename + '_' + (objectCount++); });
       
       state.map.add(obj);
@@ -254,10 +267,9 @@ async function loadLevel() {
     }
   }
 
-  // Применяем сохраненные позиции из редактора
+  // Применяем сохраненные данные (включая клонирование)
   applySavedObjects();
 
-  // Спавн игрока
   const spawnY = findGroundHeight(0, 0);
   const sy = (spawnY !== null) ? spawnY : 0;
   state.player.spawnPoint.set(0, sy + state.player.radius, 0);
@@ -267,10 +279,8 @@ async function loadLevel() {
   loadingEl.classList.add('hidden');
 }
 
-// Запускаем загрузку уровня
 loadLevel();
 
-// ----- CHARACTER (СФЕРА) -----
 loader.load('shell.glb', (gltf) => {
   const model = gltf.scene;
   model.traverse(child => {
@@ -294,7 +304,6 @@ loader.load('shell.glb', (gltf) => {
   scene.add(group);
   state.player.mesh = group;
 
-  // Если карта уже загрузилась, ставим шар на нее
   if (state.map) {
     state.player.position.y = (findGroundHeight(0, 0) || 0) + state.player.radius;
   }
@@ -361,7 +370,6 @@ function updatePhysics(dt) {
   if (state.map) {
     const origin = p.position.clone().add(new THREE.Vector3(0, p.radius, 0));
     
-    // Проверка по X
     if (Math.abs(deltaX) > 1e-5) {
       raycaster.set(origin, new THREE.Vector3(Math.sign(deltaX), 0, 0));
       raycaster.far = Math.abs(deltaX) + p.radius;
@@ -369,15 +377,10 @@ function updatePhysics(dt) {
         h.object.visible && h.object.isMesh &&
         h.point.y > p.position.y && h.point.y < p.position.y + p.radius * 1.5
       );
-      
-      if (hits.length > 0) {
-        p.velocity.x *= -WALL_BOUNCE; 
-      } else {
-        p.position.x += deltaX;
-      }
+      if (hits.length > 0) p.velocity.x *= -WALL_BOUNCE; 
+      else p.position.x += deltaX;
     }
 
-    // Проверка по Z
     if (Math.abs(deltaZ) > 1e-5) {
       raycaster.set(origin, new THREE.Vector3(0, 0, Math.sign(deltaZ)));
       raycaster.far = Math.abs(deltaZ) + p.radius;
@@ -385,12 +388,8 @@ function updatePhysics(dt) {
         h.object.visible && h.object.isMesh &&
         h.point.y > p.position.y && h.point.y < p.position.y + p.radius * 1.5
       );
-      
-      if (hits.length > 0) {
-        p.velocity.z *= -WALL_BOUNCE; 
-      } else {
-        p.position.z += deltaZ;
-      }
+      if (hits.length > 0) p.velocity.z *= -WALL_BOUNCE; 
+      else p.position.z += deltaZ;
     }
   }
 
@@ -422,19 +421,15 @@ function updatePhysics(dt) {
     p.grounded = false;
   }
 
-  // ВРАЩЕНИЕ ШАРА
   if (p.mesh) {
     p.mesh.position.copy(p.position);
-
     const distX = p.velocity.x * dt;
     const distZ = p.velocity.z * dt;
     const distance = Math.hypot(distX, distZ);
-
     if (distance > 0.0001) {
       const moveDir = new THREE.Vector3(distX, 0, distZ).normalize();
       const rotAxis = new THREE.Vector3().crossVectors(UP, moveDir).normalize();
       const angle = distance / p.radius;
-      
       const q = new THREE.Quaternion().setFromAxisAngle(rotAxis, angle);
       p.mesh.quaternion.premultiply(q);
     }
@@ -555,19 +550,23 @@ canvas.addEventListener('touchcancel', (e) => {
 // =========================================================
 const dev = {
   mode: 'play',
-  freeCam: { pos: new THREE.Vector3(), yaw: 0, pitch: 0 },
+  freeCam: { pos: new THREE.Vector3(), yaw: 0, pitch: 0, fast: false },
   transformControls: null,
   selectedObject: null,
 };
 
 const devToolsEl  = document.getElementById('dev-tools');
 const devInfoEl   = document.getElementById('dev-info');
+const crosshairEl = document.getElementById('crosshair');
 const coordPopup  = document.getElementById('coord-popup');
+
 const btnCoords   = document.getElementById('btn-coords');
 const btnEditor   = document.getElementById('btn-editor');
+const btnSpeed    = document.getElementById('btn-speed');
 const btnSave     = document.getElementById('btn-save');
 const btnExport   = document.getElementById('btn-export');
 const btnReset    = document.getElementById('btn-reset');
+const btnClone    = document.getElementById('btn-clone');
 const gizmoBtns   = document.querySelectorAll('.gizmo-btn');
 
 if (isDev) { devToolsEl.classList.add('visible'); devInfoEl.classList.add('visible'); }
@@ -576,6 +575,8 @@ function setDevMode(mode) {
   dev.mode = mode;
   btnCoords.classList.toggle('active', mode === 'coords');
   btnEditor.classList.toggle('active', mode === 'editor');
+  
+  crosshairEl.style.display = (mode === 'coords') ? 'block' : 'none';
 
   if (mode === 'coords') {
     dev.freeCam.pos.copy(camera.position);
@@ -584,6 +585,7 @@ function setDevMode(mode) {
     dev.freeCam.pitch = Math.asin(Math.max(-1, Math.min(1, dir.y)));
     if (dev.transformControls) dev.transformControls.detach();
     dev.selectedObject = null;
+    coordPopup.classList.remove('visible');
   }
   if (mode !== 'editor' && dev.transformControls) {
     dev.transformControls.detach();
@@ -592,6 +594,12 @@ function setDevMode(mode) {
 }
 
 btnCoords.addEventListener('click', () => setDevMode(dev.mode === 'coords' ? 'play' : 'coords'));
+
+btnSpeed.addEventListener('click', () => {
+  dev.freeCam.fast = !dev.freeCam.fast;
+  btnSpeed.textContent = dev.freeCam.fast ? '🚀 Скорость: x3' : '🚀 Скорость: x1';
+  btnSpeed.classList.toggle('active', dev.freeCam.fast);
+});
 
 btnEditor.addEventListener('click', () => {
   if (dev.mode === 'editor') { setDevMode('play'); return; }
@@ -606,11 +614,37 @@ btnEditor.addEventListener('click', () => {
   }
 });
 
+// КЛОНИРОВАНИЕ ОБЪЕКТА
+btnClone.addEventListener('click', () => {
+  if (!dev.selectedObject) {
+    alert('Сначала выбери объект в режиме Редактора (тапни по нему).');
+    return;
+  }
+  
+  const clone = dev.selectedObject.clone();
+  clone.position.x += 2.0; 
+  
+  // ВАЖНО: Запоминаем, с какого объекта сделан клон (для экспорта)
+  const baseId = dev.selectedObject.userData.baseId || dev.selectedObject.userData.editId;
+  
+  clone.userData = { 
+    ...dev.selectedObject.userData,
+    editId: 'clone_' + Math.random().toString(36).substring(2, 8),
+    baseId: baseId, // Ссылка на оригинал
+    edited: true 
+  };
+  
+  state.map.add(clone);
+  dev.selectedObject = clone; 
+  dev.transformControls.attach(clone);
+  
+  showError('Объект склонирован!', true);
+});
+
 gizmoBtns.forEach(b => b.addEventListener('click', () => {
   if (!dev.transformControls) return;
   if (b.id === 'btn-gizmo-translate') dev.transformControls.setMode('translate');
   if (b.id === 'btn-gizmo-rotate')    dev.transformControls.setMode('rotate');
-  if (b.id === 'btn-gizmo-scale')     dev.transformControls.setMode('scale');
 }));
 
 btnSave.addEventListener('click', () => {
@@ -657,6 +691,7 @@ function collectObjectTransforms() {
   state.map.traverse(o => {
     if (o.isMesh && o.userData.editId && o.userData.edited) {
       out[o.userData.editId] = {
+        baseId: o.userData.baseId || null, // Сохраняем базу, если это клон
         pos:   o.position.toArray().map(v => +v.toFixed(3)),
         rot:   [o.rotation.x, o.rotation.y, o.rotation.z].map(v => +v.toFixed(4)),
         scale: o.scale.toArray().map(v => +v.toFixed(3)),
@@ -666,16 +701,20 @@ function collectObjectTransforms() {
   return out;
 }
 
+// УМНАЯ ЗАГРУЗКА (Применяет позиции и СОЗДАЕТ КЛОНЫ)
 function applySavedObjects() {
   if (!state.map) return;
   let data = null;
+  
   try {
     const ls = JSON.parse(localStorage.getItem('savedObjects') || 'null');
     if (ls && Object.keys(ls).length) data = ls;
   } catch(e) {}
+  
   if (!data && SAVED_OBJECTS && Object.keys(SAVED_OBJECTS).length) data = SAVED_OBJECTS;
   if (!data) return;
 
+  // 1. Сначала применяем позиции к объектам, которые уже есть на карте
   state.map.traverse(o => {
     if (o.isMesh && o.userData.editId && data[o.userData.editId]) {
       const d = data[o.userData.editId];
@@ -683,8 +722,41 @@ function applySavedObjects() {
       o.rotation.set(d.rot[0], d.rot[1], d.rot[2]);
       o.scale.fromArray(d.scale);
       o.userData.edited = true;
+      if (d.baseId) o.userData.baseId = d.baseId;
     }
   });
+
+  // 2. Затем воссоздаем клоны, которых нет на карте
+  const clonesToCreate = [];
+  for (const [id, d] of Object.entries(data)) {
+    if (d.baseId) {
+      // Это клон, ищем, существует ли он уже
+      let exists = false;
+      state.map.traverse(o => { if (o.userData.editId === id) exists = true; });
+      
+      if (!exists) clonesToCreate.push({ id, data: d });
+    }
+  }
+
+  // Создаем клоны
+  for (const item of clonesToCreate) {
+    let sourceObj = null;
+    state.map.traverse(o => { if (o.userData.editId === item.data.baseId) sourceObj = o; });
+    
+    if (sourceObj) {
+      const clone = sourceObj.clone();
+      clone.position.fromArray(item.data.pos);
+      clone.rotation.set(item.data.rot[0], item.data.rot[1], item.data.rot[2]);
+      clone.scale.fromArray(item.data.scale);
+      clone.userData = { 
+        ...sourceObj.userData, 
+        editId: item.id, 
+        baseId: item.data.baseId, 
+        edited: true 
+      };
+      state.map.add(clone);
+    }
+  }
 }
 
 function snapObjectToGround(obj) {
@@ -709,14 +781,25 @@ function handleTap(x, y) {
   const ndc = new THREE.Vector2((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
 
   if (dev.mode === 'coords') {
-    raycaster.setFromCamera(ndc, camera);
-    raycaster.far = 1000;
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera); // Из центра (прицел)
+    raycaster.far = 2000;
     const hits = raycaster.intersectObjects(scene.children, true);
+    
     if (hits.length) {
       const p = hits[0].point;
-      coordPopup.textContent = `X: ${p.x.toFixed(2)}\nY: ${p.y.toFixed(2)}\nZ: ${p.z.toFixed(2)}`;
+      coordPopup.innerHTML = `X: ${p.x.toFixed(2)}<br>Y: ${p.y.toFixed(2)}<br>Z: ${p.z.toFixed(2)}<br><small>(Нажми, чтобы скопировать)</small>`;
       coordPopup.classList.add('visible');
-      setTimeout(() => coordPopup.classList.remove('visible'), 2500);
+      
+      coordPopup.onclick = () => {
+        const textToCopy = `X: ${p.x.toFixed(2)}, Y: ${p.y.toFixed(2)}, Z: ${p.z.toFixed(2)}`;
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(textToCopy).then(() => {
+             coordPopup.innerHTML = `Скопировано!<br><small>(Нажми, чтобы закрыть)</small>`;
+          }).catch(() => { coordPopup.classList.remove('visible'); });
+        } else {
+          coordPopup.classList.remove('visible');
+        }
+      };
     }
   } else if (dev.mode === 'editor' && state.map) {
     raycaster.setFromCamera(ndc, camera);
@@ -742,12 +825,18 @@ function updateFreeCamera(dt) {
   );
   const rgt = new THREE.Vector3(Math.cos(fc.yaw), 0, -Math.sin(fc.yaw));
 
-  const speed = 8;
+  const speed = fc.fast ? 25 : 8;
+  
   fc.pos.addScaledVector(fwd, state.input.forward * speed * dt);
   fc.pos.addScaledVector(rgt, state.input.right   * speed * dt);
+  
+  if (state.input.jumpBuffer > 0) {
+    fc.pos.y += speed * dt * 1.5;
+    state.input.jumpBuffer = 0;
+  }
 
   camera.position.copy(fc.pos);
-  camera.lookAt(fc.pos.clone().add(fwd));
+  camera.rotation.set(fc.pitch, fc.yaw, 0, 'YXZ');
 }
 
 // =========================================================
@@ -780,12 +869,12 @@ function animate() {
     sun.target.position.copy(state.player.position);
     sun.target.updateMatrixWorld();
 
+    const camPos = camera.position;
     devInfoEl.textContent =
       `FPS: ${fps}\n` +
       `Mode: ${dev.mode}\n` +
-      `P: ${state.player.position.x.toFixed(1)}, ${state.player.position.y.toFixed(1)}, ${state.player.position.z.toFixed(1)}\n` +
-      `Vel: ${state.player.velocity.length().toFixed(2)}\n` +
-      `Grounded: ${state.player.grounded ? 'Y' : 'N'}`;
+      `Cam: ${camPos.x.toFixed(1)}, ${camPos.y.toFixed(1)}, ${camPos.z.toFixed(1)}\n` +
+      (dev.mode === 'play' ? `Ball: ${state.player.position.x.toFixed(1)}, ${state.player.position.y.toFixed(1)}, ${state.player.position.z.toFixed(1)}` : '');
   }
 
   renderer.render(scene, camera);
