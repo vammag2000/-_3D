@@ -213,10 +213,6 @@ const state = {
     grounded: false,
     targetYaw: 0,
     spawnPoint: new THREE.Vector3(0, 1, 0),
-    
-    // Для фиксации таза
-    hipBone: null, 
-    hipRestQuat: new THREE.Quaternion(),
   },
   camera: { orbitYaw: 0, orbitPitch: 0.35, distance: 6, target: new THREE.Vector3() },
   map: null,
@@ -272,14 +268,10 @@ loader.load('shell.glb', (gltf) => {
     }
   });
 
-  // Ищем кость таза, чтобы потом её выпрямлять
+  // ЗАПОМИНАЕМ ПРЯМУЮ ПОЗУ ВСЕХ КОСТЕЙ
   model.traverse((node) => {
     if (node.isBone) {
-      const name = node.name.toLowerCase();
-      if (name === 'hip' || name === 'hips' || name === 'pelvis') {
-        state.player.hipBone = node;
-        state.player.hipRestQuat.copy(node.quaternion);
-      }
+      node.userData.restQuat = node.quaternion.clone();
     }
   });
 
@@ -303,7 +295,6 @@ loader.load('shell.glb', (gltf) => {
   state.player.mesh = group;
   group.position.copy(state.player.position);
 
-  // ВКЛЮЧАЕМ АНИМАЦИЮ ОБРАТНО, НО ЧИСТИМ ЕЁ
   if (gltf.animations && gltf.animations.length > 0) {
     const mixer = new THREE.AnimationMixer(model);
     state.player.mixer = mixer;
@@ -318,7 +309,7 @@ loader.load('shell.glb', (gltf) => {
       let walkClip = THREE.AnimationUtils.subclip(rawClip, 'Walk', 0, half, fps);
       let idleClip = THREE.AnimationUtils.subclip(rawClip, 'Idle', half, totalFrames, fps);
       
-      // Очищаем анимацию от смещений
+      // Обнуляем смещение по X и Z (убираем телепортацию)
       const cleanClip = (clip) => {
         clip.tracks.forEach(t => {
           if (t.name.endsWith('.position')) {
@@ -338,7 +329,7 @@ loader.load('shell.glb', (gltf) => {
       state.player.actions.idle.play();
       state.player.currentAction = state.player.actions.idle;
       
-      showError("Анимация включена. Таз жестко зафиксирован.", true);
+      showError("Анимация загружена. Торс зафиксирован.", true);
     } else {
       const findClip = (kw) => clips.find(c => c.name.toLowerCase().includes(kw));
       let idleClip = findClip('idle') || findClip('stand') || clips[0];
@@ -352,7 +343,7 @@ loader.load('shell.glb', (gltf) => {
       if (walkClip) {
         state.player.actions.walk = mixer.clipAction(walkClip);
       }
-      showError("Загружены 2+ анимации. Таз зафиксирован.", true);
+      showError("Загружены 2+ анимации.", true);
     }
   } else {
     showError("В файле НЕТ анимаций! Включена псевдо-анимация.");
@@ -483,9 +474,20 @@ function updateAnimation(dt) {
 
   p.mixer.update(dt);
 
-  // КОСТЫЛЬ: Принудительно выпрямляем таз после каждого кадра анимации
-  if (p.hipBone) {
-    p.hipBone.quaternion.copy(p.hipRestQuat);
+  // КОСТЫЛЬ: Проходимся по всем костям
+  if (p.mesh && p.mesh.children.length > 0) {
+    p.mesh.children[0].traverse((node) => {
+      if (node.isBone && node.userData.restQuat) {
+        const name = node.name.toLowerCase();
+        // Разрешаем двигаться ТОЛЬКО рукам и ногам
+        const isLimb = ['thigh', 'calf', 'leg', 'foot', 'arm', 'hand', 'shoulder', 'toe', 'finger', 'бедр', 'голен', 'ступ', 'рук', 'плеч', 'кист'].some(kw => name.includes(kw));
+        
+        // Всё остальное (спина, шея, голова, таз) жестко ставим прямо
+        if (!isLimb) {
+          node.quaternion.copy(node.userData.restQuat);
+        }
+      }
+    });
   }
 
   const targetAction = isMoving ? p.actions.walk : p.actions.idle;
