@@ -164,80 +164,21 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 
 const isDev = new URLSearchParams(location.search).get('dev') === '1';
 
-// ⬇⬇⬇ ТВОЙ КОД ЭКСПОРТА ВСТАВЛЕН СЮДА ⬇⬇⬇
 const SAVED_OBJECTS = {
-  "zov.glb_0": {
-    "baseId": null,
-    "pos": [ 0, 0, 0 ],
-    "rot": [ 0, 0, 0 ],
-    "scale": [ 1, 1, 1 ]
-  },
-  "wall.glb_1": {
-    "baseId": null,
-    "pos": [ -0.163, 1.343, -1.289 ],
-    "rot": [ 0, 0, 0 ],
-    "scale": [ 1, 1, 1 ]
-  },
-  "clone_7m7tln": {
-    "baseId": "wall.glb_1",
-    "pos": [ 1.837, 1.343, -1.289 ],
-    "rot": [ 0, 0, 0 ],
-    "scale": [ 1, 1, 1 ]
-  },
-  "clone_h3tsx8": {
-    "baseId": "wall.glb_1",
-    "pos": [ -0.2, 1.343, 1.011 ],
-    "rot": [ 0, 0, 0 ],
-    "scale": [ 1, 1, 1 ]
-  },
-  "clone_lhl0lr": {
-    "baseId": "wall.glb_1",
-    "pos": [ 1.8, 1.343, 1.011 ],
-    "rot": [ 0, 0, 0 ],
-    "scale": [ 1, 1, 1 ]
-  },
-  "clone_d3x7w1": {
-    "baseId": "wall.glb_1",
-    "pos": [ 3.8, 1.343, 1.011 ],
-    "rot": [ 0, 0, 0 ],
-    "scale": [ 1, 1, 1 ]
-  },
-  "clone_rczxfy": {
-    "baseId": "wall.glb_1",
-    "pos": [ 3.837, 1.343, -1.289 ],
-    "rot": [ 0, 0, 0 ],
-    "scale": [ 1, 1, 1 ]
-  },
-  "clone_y226gy": {
-    "baseId": "wall.glb_1",
-    "pos": [ 5.837, 1.343, -1.289 ],
-    "rot": [ 0, 0, 0 ],
-    "scale": [ 1, 1, 1 ]
-  },
-  "clone_ugltd9": {
-    "baseId": "wall.glb_1",
-    "pos": [ 5.8, 1.343, 1.011 ],
-    "rot": [ 0, 0, 0 ],
-    "scale": [ 1, 1, 1 ]
-  },
-  "clone_aib31u": {
-    "baseId": "wall.glb_1",
-    "pos": [ 7.179, 1.343, 0.579 ],
-    "rot": [ 0, 0.6145, 0 ],
-    "scale": [ 1, 1, 1 ]
-  },
-  "clone_1sbued": {
-    "baseId": "wall.glb_1",
-    "pos": [ 7.321, 1.343, -0.618 ],
-    "rot": [ -3.1416, 0.8891, -3.1416 ],
-    "scale": [ 1, 1, 1 ]
-  }
+  "zov.glb_0": { "baseId": null, "pos": [ 0, 0, 0 ], "rot": [ 0, 0, 0 ], "scale": [ 1, 1, 1 ] },
+  "wall.glb_1": { "baseId": null, "pos": [ -0.163, 1.343, -1.289 ], "rot": [ 0, 0, 0 ], "scale": [ 1, 1, 1 ] },
+  "clone_7m7tln": { "baseId": "wall.glb_1", "pos": [ 1.837, 1.343, -1.289 ], "rot": [ 0, 0, 0 ], "scale": [ 1, 1, 1 ] },
+  "clone_h3tsx8": { "baseId": "wall.glb_1", "pos": [ -0.2, 1.343, 1.011 ], "rot": [ 0, 0, 0 ], "scale": [ 1, 1, 1 ] },
+  "clone_lhl0lr": { "baseId": "wall.glb_1", "pos": [ 1.8, 1.343, 1.011 ], "rot": [ 0, 0, 0 ], "scale": [ 1, 1, 1 ] },
+  "clone_d3x7w1": { "baseId": "wall.glb_1", "pos": [ 3.8, 1.343, 1.011 ], "rot": [ 0, 0, 0 ], "scale": [ 1, 1, 1 ] },
+  "clone_rczxfy": { "baseId": "wall.glb_1", "pos": [ 3.837, 1.343, -1.289 ], "rot": [ 0, 0, 0 ], "scale": [ 1, 1, 1 ] },
+  "clone_y226gy": { "baseId": "wall.glb_1", "pos": [ 5.837, 1.343, -1.289 ], "rot": [ 0, 0, 0 ], "scale": [ 1, 1, 1 ] },
+  "clone_ugltd9": { "baseId": "wall.glb_1", "pos": [ 5.8, 1.343, 1.011 ], "rot": [ 0, 0, 0 ], "scale": [ 1, 1, 1 ] },
+  "clone_aib31u": { "baseId": "wall.glb_1", "pos": [ 7.179, 1.343, 0.579 ], "rot": [ 0, 0.6145, 0 ], "scale": [ 1, 1, 1 ] },
+  "clone_1sbued": { "baseId": "wall.glb_1", "pos": [ 7.321, 1.343, -0.618 ], "rot": [ -3.1416, 0.8891, -3.1416 ], "scale": [ 1, 1, 1 ] }
 };
 
-const LEVEL_FILES = [
-  'zov.glb',       
-  'wall.glb'       
-];
+const LEVEL_FILES = [ 'zov.glb', 'wall.glb' ];
 
 const MAX_SPEED          = 7.0;   
 const ACCELERATION       = 25.0;  
@@ -247,18 +188,19 @@ const JUMP_SPEED         = 8.0;
 const FALL_RESPAWN_Y     = -20;   
 const WALL_BOUNCE        = 0.2;   
 
-// --- НАСТРОЙКИ ЭФФЕКТА ПАДЕНИЯ ---
-const SPAWN_HEIGHT       = 45;    // С какой высоты падает сфера (~2 сек)
-const BURN_DURATION      = 2.0;   // Сколько секунд горит
+// --- НАСТРОЙКИ ЭФФЕКТА МЕТЕОРА ---
+const SPAWN_HEIGHT       = 180;   // Очень высоко (падение ~4 сек)
+const BURN_DURATION      = 2.0;   // Сколько секунд горит после падения
+const PARTICLE_COUNT     = 400;   // Много частиц для красивого огня
 
 // =========================================================
 // 3) THREE.JS БАЗА
 // =========================================================
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x88bbdd);
+scene.background = new THREE.Color(0x112233); // Сделаем небо темнее, чтобы огонь был ярче
 
-const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 500);
+const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 1000);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
@@ -269,8 +211,8 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 container.appendChild(renderer.domElement);
 const canvas = renderer.domElement;
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x444455, 1.0));
-const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444455, 0.8));
+const sun = new THREE.DirectionalLight(0xffffff, 1.0);
 sun.position.set(20, 40, 20);
 sun.castShadow = true;
 sun.shadow.mapSize.width = 1024;
@@ -295,15 +237,17 @@ if (isDev) {
 const state = {
   player: {
     mesh: null,
+    auraMesh: null,
     radius: 0.5, 
     position: new THREE.Vector3(0, 0, 0),
     velocity: new THREE.Vector3(),
     grounded: false,
     spawnPoint: new THREE.Vector3(0, 1, 0),
-    mode: 'falling', // 'falling', 'burning', 'normal'
+    mode: 'falling', 
     burnTimer: 0,
+    shakeTimer: 0,
   },
-  camera: { orbitYaw: 0, orbitPitch: 0.35, distance: 8, target: new THREE.Vector3() },
+  camera: { orbitYaw: 0, orbitPitch: 0.4, distance: 14, target: new THREE.Vector3() }, // Отодвинули камеру
   map: null,
   input: { forward: 0, right: 0, jumpBuffer: 0 },
 };
@@ -313,65 +257,77 @@ const DOWN = new THREE.Vector3(0, -1, 0);
 const UP = new THREE.Vector3(0, 1, 0);
 
 // =========================================================
-// 4.5) СИСТЕМА ЧАСТИЦ (ОГОНЬ)
+// 4.5) МОЩНАЯ СИСТЕМА ЧАСТИЦ (ОГОНЬ)
 // =========================================================
 const fireParticles = [];
-const particleCount = 150;
 const particleGeo = new THREE.BufferGeometry();
-const particlePos = new Float32Array(particleCount * 3);
+const particlePos = new Float32Array(PARTICLE_COUNT * 3);
 particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePos, 3));
 
-// Текстура для частиц (создаем круг с градиентом в памяти)
+// Улучшенная текстура огня (яркое ядро, плавный переход в красный)
 const pCanvas = document.createElement('canvas');
-pCanvas.width = 32; pCanvas.height = 32;
+pCanvas.width = 128; pCanvas.height = 128;
 const pCtx = pCanvas.getContext('2d');
-const gradient = pCtx.createRadialGradient(16, 16, 0, 16, 16, 16);
-gradient.addColorStop(0, 'rgba(255,255,200,1)');
-gradient.addColorStop(0.5, 'rgba(255,100,0,0.8)');
-gradient.addColorStop(1, 'rgba(255,0,0,0)');
+const gradient = pCtx.createRadialGradient(64, 64, 0, 64, 64, 64);
+gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');   // Белое ядро
+gradient.addColorStop(0.2, 'rgba(255, 255, 0, 1)');   // Желтый
+gradient.addColorStop(0.5, 'rgba(255, 100, 0, 0.8)'); // Оранжевый
+gradient.addColorStop(0.8, 'rgba(255, 0, 0, 0.3)');   // Красный
+gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');       // Прозрачный
 pCtx.fillStyle = gradient;
-pCtx.fillRect(0, 0, 32, 32);
+pCtx.fillRect(0, 0, 128, 128);
 const particleTex = new THREE.CanvasTexture(pCanvas);
 
 const particleMat = new THREE.PointsMaterial({
-  size: 0.6,
+  size: 2.5, // Очень крупные частицы
   map: particleTex,
   blending: THREE.AdditiveBlending,
   depthWrite: false,
   transparent: true,
-  opacity: 0.8
+  opacity: 0.9,
+  color: 0xffaa00
 });
 
 const particleSystem = new THREE.Points(particleGeo, particleMat);
 scene.add(particleSystem);
 
-// Свет для огня
-const fireLight = new THREE.PointLight(0xff5500, 0, 10);
+// Источник света от огня
+const fireLight = new THREE.PointLight(0xff5500, 0, 30);
 scene.add(fireLight);
 
-// Функция спавна частицы
-function spawnFireParticle(pos) {
-  if (fireParticles.length >= particleCount) return;
+function spawnFireParticle(pos, isFalling) {
+  if (fireParticles.length >= PARTICLE_COUNT) return;
   
   const p = {
     position: pos.clone(),
-    velocity: new THREE.Vector3(
-      (Math.random() - 0.5) * 2,
-      Math.random() * 2 + 1,
-      (Math.random() - 0.5) * 2
-    ),
-    life: 1.0 // Время жизни (1 сек)
+    life: 1.0
   };
+
+  if (isFalling) {
+    // При падении частицы летят вверх (шлейф)
+    p.velocity = new THREE.Vector3(
+      (Math.random() - 0.5) * 8,
+      Math.random() * 15 + 5,
+      (Math.random() - 0.5) * 8
+    );
+  } else {
+    // При горении на земле разлетаются в стороны
+    p.velocity = new THREE.Vector3(
+      (Math.random() - 0.5) * 6,
+      Math.random() * 8 + 2,
+      (Math.random() - 0.5) * 6
+    );
+  }
+  
   fireParticles.push(p);
 }
 
-// Обновление частиц
 function updateFireParticles(dt) {
   const positions = particleSystem.geometry.attributes.position.array;
   
   for (let i = fireParticles.length - 1; i >= 0; i--) {
     const p = fireParticles[i];
-    p.life -= dt * 1.5; // Скорость затухания
+    p.life -= dt * 1.2; 
     p.position.add(p.velocity.clone().multiplyScalar(dt));
     
     if (p.life <= 0) {
@@ -379,15 +335,14 @@ function updateFireParticles(dt) {
     }
   }
 
-  // Перезаписываем буфер
-  for (let i = 0; i < particleCount; i++) {
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
     if (i < fireParticles.length) {
       positions[i*3] = fireParticles[i].position.x;
       positions[i*3+1] = fireParticles[i].position.y;
       positions[i*3+2] = fireParticles[i].position.z;
     } else {
       positions[i*3] = 0;
-      positions[i*3+1] = -100; // Прячем за экран
+      positions[i*3+1] = -1000; 
       positions[i*3+2] = 0;
     }
   }
@@ -412,9 +367,7 @@ async function loadLevel() {
       const gltf = await loader.loadAsync(filename);
       const obj = gltf.scene;
       obj.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
-      
       obj.traverse(o => { if (o.isMesh) o.userData.editId = filename + '_' + (objectCount++); });
-      
       state.map.add(obj);
     } catch (err) {
       showError(`Не удалось загрузить ${filename}: ` + err.message);
@@ -426,10 +379,8 @@ async function loadLevel() {
   const spawnY = findGroundHeight(0, 0);
   const sy = (spawnY !== null) ? spawnY : 0;
   
-  // Спавним в небе!
   state.player.spawnPoint.set(0, sy + SPAWN_HEIGHT, 0);
   state.player.position.copy(state.player.spawnPoint);
-  
   if (state.player.mesh) state.player.mesh.position.copy(state.player.position);
 
   loadingEl.classList.add('hidden');
@@ -457,16 +408,28 @@ loader.load('shell.glb', (gltf) => {
 
   const group = new THREE.Group();
   group.add(model);
+
+  // Создаем светящуюся ауру вокруг сферы (для огня)
+  const auraGeo = new THREE.SphereGeometry(state.player.radius * 1.4, 16, 16);
+  const auraMat = new THREE.MeshBasicMaterial({ 
+    color: 0xff5500, 
+    transparent: true, 
+    opacity: 0.6, 
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  const auraMesh = new THREE.Mesh(auraGeo, auraMat);
+  group.add(auraMesh);
+  state.player.auraMesh = auraMesh;
+
   scene.add(group);
   state.player.mesh = group;
 
-  // Если карта уже загрузилась, ставим в небо
   if (state.map) {
     state.player.position.y = (findGroundHeight(0, 0) || 0) + SPAWN_HEIGHT;
   }
   group.position.copy(state.player.position);
 
-  showError(`Сфера загружена. Приготовься к падению!`, true);
 }, undefined, (err) => {
   showError('Ошибка shell.glb: ' + err.message);
 });
@@ -492,15 +455,12 @@ function updatePhysics(dt) {
   const p = state.player;
   const cam = state.camera;
 
-  // === БЛОКИРОВКА УПРАВЛЕНИЯ ===
   let forwardInput = state.input.forward;
   let rightInput = state.input.right;
   let jumpInput = state.input.jumpBuffer;
 
   if (p.mode === 'falling' || p.mode === 'burning') {
-    forwardInput = 0;
-    rightInput = 0;
-    jumpInput = 0;
+    forwardInput = 0; rightInput = 0; jumpInput = 0;
   }
 
   const forward = new THREE.Vector3(-Math.sin(cam.orbitYaw), 0, -Math.cos(cam.orbitYaw));
@@ -508,14 +468,13 @@ function updatePhysics(dt) {
 
   const inputDir = new THREE.Vector3();
   inputDir.addScaledVector(forward, forwardInput);
-  inputDir.addScaledVector(right,   rightInput);
+  inputDir.addScaledVector(right, rightInput);
   const hasInput = inputDir.lengthSq() > 0.0001;
   if (hasInput) inputDir.normalize();
 
   if (hasInput) {
     p.velocity.x += inputDir.x * ACCELERATION * dt;
     p.velocity.z += inputDir.z * ACCELERATION * dt;
-
     const horizSpeed = Math.hypot(p.velocity.x, p.velocity.z);
     if (horizSpeed > MAX_SPEED) {
       p.velocity.x = (p.velocity.x / horizSpeed) * MAX_SPEED;
@@ -525,10 +484,8 @@ function updatePhysics(dt) {
     const frictionFactor = Math.max(0, 1 - FRICTION * dt);
     p.velocity.x *= frictionFactor;
     p.velocity.z *= frictionFactor;
-    
     if (Math.hypot(p.velocity.x, p.velocity.z) < 0.1) {
-      p.velocity.x = 0;
-      p.velocity.z = 0;
+      p.velocity.x = 0; p.velocity.z = 0;
     }
   }
 
@@ -537,25 +494,17 @@ function updatePhysics(dt) {
   
   if (state.map) {
     const origin = p.position.clone().add(new THREE.Vector3(0, p.radius, 0));
-    
     if (Math.abs(deltaX) > 1e-5) {
       raycaster.set(origin, new THREE.Vector3(Math.sign(deltaX), 0, 0));
       raycaster.far = Math.abs(deltaX) + p.radius;
-      const hits = raycaster.intersectObject(state.map, true).filter(h => 
-        h.object.visible && h.object.isMesh &&
-        h.point.y > p.position.y && h.point.y < p.position.y + p.radius * 1.5
-      );
+      const hits = raycaster.intersectObject(state.map, true).filter(h => h.object.visible && h.object.isMesh && h.point.y > p.position.y && h.point.y < p.position.y + p.radius * 1.5);
       if (hits.length > 0) p.velocity.x *= -WALL_BOUNCE; 
       else p.position.x += deltaX;
     }
-
     if (Math.abs(deltaZ) > 1e-5) {
       raycaster.set(origin, new THREE.Vector3(0, 0, Math.sign(deltaZ)));
       raycaster.far = Math.abs(deltaZ) + p.radius;
-      const hits = raycaster.intersectObject(state.map, true).filter(h => 
-        h.object.visible && h.object.isMesh &&
-        h.point.y > p.position.y && h.point.y < p.position.y + p.radius * 1.5
-      );
+      const hits = raycaster.intersectObject(state.map, true).filter(h => h.object.visible && h.object.isMesh && h.point.y > p.position.y && h.point.y < p.position.y + p.radius * 1.5);
       if (hits.length > 0) p.velocity.z *= -WALL_BOUNCE; 
       else p.position.z += deltaZ;
     }
@@ -574,55 +523,62 @@ function updatePhysics(dt) {
 
   p.position.y += p.velocity.y * dt;
 
-  // === ЛОГИКА ПРИЗЕМЛЕНИЯ И ГОРЕНИЯ ===
+  // === ПРИЗЕМЛЕНИЕ ===
   const groundY = findGroundHeight(p.position.x, p.position.z);
   if (groundY !== null && p.position.y - p.radius <= groundY) {
     p.position.y = groundY + p.radius;
     p.velocity.y = 0;
     p.grounded = true;
     
-    // Если приземлились впервые
     if (p.mode === 'falling') {
       p.mode = 'burning';
       p.burnTimer = BURN_DURATION;
-      fireLight.intensity = 4; // Вспышка света
+      p.shakeTimer = 0.5; // Включаем тряску камеры
       
-      // Выброс частиц при ударе
-      for (let i = 0; i < 30; i++) {
+      // ОГРОМНЫЙ взрыв частиц при ударе
+      for (let i = 0; i < 100; i++) {
          const burstPos = p.position.clone();
          burstPos.y -= p.radius;
-         spawnFireParticle(burstPos);
+         // Разлетаются во все стороны
+         const p = { 
+           position: burstPos, 
+           velocity: new THREE.Vector3((Math.random()-0.5)*30, Math.random()*20, (Math.random()-0.5)*30), 
+           life: 1.0 
+         };
+         fireParticles.push(p);
       }
     }
   } else {
     p.grounded = false;
   }
 
-  // Таймер горения
+  // === ГОРЕНИЕ И ПОЛЕТ ===
+  if (p.mode === 'falling' || p.mode === 'burning') {
+    // Огонь горит всё время падения и 2 секунды после
+    fireLight.position.copy(p.position);
+    fireLight.intensity = 8 + Math.random() * 4; // Мерцание
+    
+    if (p.auraMesh) p.auraMesh.visible = true;
+
+    // Спавним частицы
+    if (Math.random() < 0.9) {
+      const spawnPos = p.position.clone();
+      spawnPos.y -= p.radius * 0.5; // Берем чуть ниже центра
+      spawnFireParticle(spawnPos, p.mode === 'falling');
+    }
+  } else {
+    if (p.auraMesh) p.auraMesh.visible = false;
+    fireLight.intensity = 0;
+  }
+
   if (p.mode === 'burning') {
     p.burnTimer -= dt;
-    
-    // Спавним частицы огня, пока горим
-    if (Math.random() < 0.6) {
-      const spawnPos = p.position.clone();
-      spawnPos.y -= p.radius * 0.5;
-      spawnPos.x += (Math.random() - 0.5) * p.radius;
-      spawnPos.z += (Math.random() - 0.5) * p.radius;
-      spawnFireParticle(spawnPos);
-    }
-
-    // Свет следует за сферой, но становится тусклее
-    fireLight.position.copy(p.position);
-    fireLight.intensity = (p.burnTimer / BURN_DURATION) * 4;
-
     if (p.burnTimer <= 0) {
       p.mode = 'normal';
-      fireLight.intensity = 0;
     }
   }
 
   if (p.position.y < FALL_RESPAWN_Y) {
-    // Возвращаем наверх для повторного падения
     p.position.copy(p.spawnPoint);
     p.velocity.set(0, 0, 0);
     p.mode = 'falling';
@@ -647,7 +603,9 @@ function updatePhysics(dt) {
 function updateCamera(dt) {
   const cam = state.camera;
   const p = state.player;
-  cam.target.lerp(p.position.clone().add(new THREE.Vector3(0, p.radius, 0)), Math.min(1, dt * 12));
+  
+  // Камера плавно следит за целью (сфера)
+  cam.target.lerp(p.position.clone().add(new THREE.Vector3(0, p.radius, 0)), Math.min(1, dt * 15));
 
   const hd = Math.cos(cam.orbitPitch) * cam.distance;
   const vd = Math.sin(cam.orbitPitch) * cam.distance;
@@ -656,7 +614,19 @@ function updateCamera(dt) {
     cam.target.y + vd,
     cam.target.z + Math.cos(cam.orbitYaw) * hd
   );
-  camera.position.lerp(desired, Math.min(1, dt * 15));
+  
+  // Плавное следование
+  camera.position.lerp(desired, Math.min(1, dt * 20));
+  
+  // Тряска камеры при ударе
+  if (p.shakeTimer > 0) {
+    p.shakeTimer -= dt;
+    const shakeAmt = p.shakeTimer * 0.5;
+    camera.position.x += (Math.random() - 0.5) * shakeAmt;
+    camera.position.y += (Math.random() - 0.5) * shakeAmt;
+    camera.position.z += (Math.random() - 0.5) * shakeAmt;
+  }
+  
   camera.lookAt(cam.target);
 }
 
@@ -731,7 +701,8 @@ canvas.addEventListener('touchmove', (e) => {
     const ts = [...activeTouches.values()];
     const d = Math.hypot(ts[0].x - ts[1].x, ts[0].y - ts[1].y);
     if (pinchState.startDist > 1 && d > 1 && dev.mode !== 'coords') {
-      state.camera.distance = Math.max(3, Math.min(25, pinchState.startZoom * (pinchState.startDist / d)));
+      // Зум привязан к сфере
+      state.camera.distance = Math.max(5, Math.min(40, pinchState.startZoom * (pinchState.startDist / d)));
     }
   }
 }, { passive: true });
@@ -754,7 +725,7 @@ canvas.addEventListener('touchcancel', (e) => {
 }, { passive: true });
 
 // =========================================================
-// 8) DEV-РЕЖИМ
+// 8) DEV-РЕЖИМ (без изменений)
 // =========================================================
 const dev = {
   mode: 'play',
@@ -783,7 +754,6 @@ function setDevMode(mode) {
   dev.mode = mode;
   btnCoords.classList.toggle('active', mode === 'coords');
   btnEditor.classList.toggle('active', mode === 'editor');
-  
   crosshairEl.style.display = (mode === 'coords') ? 'block' : 'none';
 
   if (mode === 'coords') {
@@ -822,34 +792,16 @@ btnEditor.addEventListener('click', () => {
   }
 });
 
-// КЛОНИРОВАНИЕ ОБЪЕКТА
 btnClone.addEventListener('click', () => {
-  if (!dev.selectedObject) {
-    alert('Сначала выбери объект в режиме Редактора (тапни по нему).');
-    return;
-  }
-  
+  if (!dev.selectedObject) { alert('Сначала выбери объект!'); return; }
   const clone = dev.selectedObject.clone();
   clone.position.x += 2.0; 
-  
   const baseId = dev.selectedObject.userData.baseId || dev.selectedObject.userData.editId;
-  
-  clone.userData = { 
-    ...dev.selectedObject.userData,
-    editId: 'clone_' + Math.random().toString(36).substring(2, 8),
-    baseId: baseId, 
-    edited: true 
-  };
-  
-  if (dev.selectedObject.parent) {
-    dev.selectedObject.parent.add(clone);
-  } else {
-    state.map.add(clone);
-  }
-  
+  clone.userData = { ...dev.selectedObject.userData, editId: 'clone_' + Math.random().toString(36).substring(2, 8), baseId: baseId, edited: true };
+  if (dev.selectedObject.parent) dev.selectedObject.parent.add(clone);
+  else state.map.add(clone);
   dev.selectedObject = clone; 
   dev.transformControls.attach(clone);
-  
   showError('Объект склонирован!', true);
 });
 
@@ -869,12 +821,8 @@ btnExport.addEventListener('click', () => {
   const data = collectObjectTransforms();
   const code = 'const SAVED_OBJECTS = ' + JSON.stringify(data, null, 2) + ';';
   if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(code)
-      .then(() => alert('Скопировано в буфер (' + Object.keys(data).length + ' об.)'))
-      .catch(() => showExportDialog(code));
-  } else {
-    showExportDialog(code);
-  }
+    navigator.clipboard.writeText(code).then(() => alert('Скопировано в буфер!')).catch(() => showExportDialog(code));
+  } else { showExportDialog(code); }
 });
 
 btnReset.addEventListener('click', () => {
@@ -902,12 +850,7 @@ function collectObjectTransforms() {
   if (!state.map) return out;
   state.map.traverse(o => {
     if (o.isMesh && o.userData.editId && o.userData.edited) {
-      out[o.userData.editId] = {
-        baseId: o.userData.baseId || null,
-        pos:   o.position.toArray().map(v => +v.toFixed(3)),
-        rot:   [o.rotation.x, o.rotation.y, o.rotation.z].map(v => +v.toFixed(4)),
-        scale: o.scale.toArray().map(v => +v.toFixed(3)),
-      };
+      out[o.userData.editId] = { baseId: o.userData.baseId || null, pos: o.position.toArray().map(v => +v.toFixed(3)), rot: [o.rotation.x, o.rotation.y, o.rotation.z].map(v => +v.toFixed(4)), scale: o.scale.toArray().map(v => +v.toFixed(3)) };
     }
   });
   return out;
@@ -916,20 +859,16 @@ function collectObjectTransforms() {
 function applySavedObjects() {
   if (!state.map) return;
   let data = SAVED_OBJECTS; 
-  
   try {
     const ls = JSON.parse(localStorage.getItem('savedObjects') || 'null');
     if (ls && Object.keys(ls).length) data = ls; 
   } catch(e) {}
-  
   if (!data || !Object.keys(data).length) return;
 
   state.map.traverse(o => {
     if (o.isMesh && o.userData.editId && data[o.userData.editId]) {
       const d = data[o.userData.editId];
-      o.position.fromArray(d.pos);
-      o.rotation.set(d.rot[0], d.rot[1], d.rot[2]);
-      o.scale.fromArray(d.scale);
+      o.position.fromArray(d.pos); o.rotation.set(d.rot[0], d.rot[1], d.rot[2]); o.scale.fromArray(d.scale);
       o.userData.edited = true;
       if (d.baseId) o.userData.baseId = d.baseId;
     }
@@ -947,24 +886,12 @@ function applySavedObjects() {
   for (const item of clonesToCreate) {
     let sourceObj = null;
     state.map.traverse(o => { if (o.userData.editId === item.data.baseId) sourceObj = o; });
-    
     if (sourceObj) {
       const clone = sourceObj.clone();
-      clone.position.fromArray(item.data.pos);
-      clone.rotation.set(item.data.rot[0], item.data.rot[1], item.data.rot[2]);
-      clone.scale.fromArray(item.data.scale);
-      clone.userData = { 
-        ...sourceObj.userData, 
-        editId: item.id, 
-        baseId: item.data.baseId, 
-        edited: true 
-      };
-      
-      if (sourceObj.parent) {
-        sourceObj.parent.add(clone);
-      } else {
-        state.map.add(clone);
-      }
+      clone.position.fromArray(item.data.pos); clone.rotation.set(item.data.rot[0], item.data.rot[1], item.data.rot[2]); clone.scale.fromArray(item.data.scale);
+      clone.userData = { ...sourceObj.userData, editId: item.id, baseId: item.data.baseId, edited: true };
+      if (sourceObj.parent) sourceObj.parent.add(clone);
+      else state.map.add(clone);
     }
   }
 }
@@ -974,87 +901,55 @@ function snapObjectToGround(obj) {
   obj.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(obj);
   if (box.isEmpty()) return;
-
   const center = box.getCenter(new THREE.Vector3());
   raycaster.set(new THREE.Vector3(center.x, box.max.y + 5, center.z), DOWN);
   raycaster.far = 1000;
   const hits = raycaster.intersectObject(state.map, true).filter(h => !isDescendantOf(h.object, obj) && h.object.visible);
-
   if (hits.length) {
-    const groundY = hits[0].point.y;
-    const deltaY = groundY - box.min.y;
-    
+    const deltaY = hits[0].point.y - box.min.y;
     const worldPos = new THREE.Vector3();
-    obj.getWorldPosition(worldPos);
-    worldPos.y += deltaY;
-    
-    if (obj.parent) {
-      obj.parent.worldToLocal(worldPos);
-    }
+    obj.getWorldPosition(worldPos); worldPos.y += deltaY;
+    if (obj.parent) obj.parent.worldToLocal(worldPos);
     obj.position.copy(worldPos);
-    
     obj.userData.edited = true;
   }
 }
 
 function handleTap(x, y) {
   const ndc = new THREE.Vector2((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
-
   if (dev.mode === 'coords') {
     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera); 
     raycaster.far = 2000;
     const hits = raycaster.intersectObjects(scene.children, true);
-    
     if (hits.length) {
       const p = hits[0].point;
       coordPopup.innerHTML = `X: ${p.x.toFixed(2)}<br>Y: ${p.y.toFixed(2)}<br>Z: ${p.z.toFixed(2)}<br><small>(Нажми, чтобы скопировать)</small>`;
       coordPopup.classList.add('visible');
-      
       coordPopup.onclick = () => {
         const textToCopy = `X: ${p.x.toFixed(2)}, Y: ${p.y.toFixed(2)}, Z: ${p.z.toFixed(2)}`;
         if (navigator.clipboard?.writeText) {
-          navigator.clipboard.writeText(textToCopy).then(() => {
-             coordPopup.innerHTML = `Скопировано!<br><small>(Нажми, чтобы закрыть)</small>`;
-          }).catch(() => { coordPopup.classList.remove('visible'); });
-        } else {
-          coordPopup.classList.remove('visible');
-        }
+          navigator.clipboard.writeText(textToCopy).then(() => { coordPopup.innerHTML = `Скопировано!<br><small>(Нажми, чтобы закрыть)</small>`; }).catch(() => { coordPopup.classList.remove('visible'); });
+        } else coordPopup.classList.remove('visible');
       };
     }
   } else if (dev.mode === 'editor' && state.map) {
-    raycaster.setFromCamera(ndc, camera);
-    raycaster.far = 1000;
+    raycaster.setFromCamera(ndc, camera); raycaster.far = 1000;
     const hits = raycaster.intersectObject(state.map, true);
     if (hits.length) {
-      dev.selectedObject = hits[0].object;
-      dev.selectedObject.userData.edited = true;
+      dev.selectedObject = hits[0].object; dev.selectedObject.userData.edited = true;
       dev.transformControls.attach(dev.selectedObject);
-    } else {
-      dev.selectedObject = null;
-      dev.transformControls.detach();
-    }
+    } else { dev.selectedObject = null; dev.transformControls.detach(); }
   }
 }
 
 function updateFreeCamera(dt) {
   const fc = dev.freeCam;
-  const fwd = new THREE.Vector3(
-    -Math.sin(fc.yaw) * Math.cos(fc.pitch),
-     Math.sin(fc.pitch),
-    -Math.cos(fc.yaw) * Math.cos(fc.pitch)
-  );
+  const fwd = new THREE.Vector3(-Math.sin(fc.yaw) * Math.cos(fc.pitch), Math.sin(fc.pitch), -Math.cos(fc.yaw) * Math.cos(fc.pitch));
   const rgt = new THREE.Vector3(Math.cos(fc.yaw), 0, -Math.sin(fc.yaw));
-
   const speed = fc.fast ? 25 : 8;
-  
   fc.pos.addScaledVector(fwd, state.input.forward * speed * dt);
   fc.pos.addScaledVector(rgt, state.input.right   * speed * dt);
-  
-  if (state.input.jumpBuffer > 0) {
-    fc.pos.y += speed * dt * 1.5;
-    state.input.jumpBuffer = 0;
-  }
-
+  if (state.input.jumpBuffer > 0) { fc.pos.y += speed * dt * 1.5; state.input.jumpBuffer = 0; }
   camera.position.copy(fc.pos);
   camera.rotation.set(fc.pitch, fc.yaw, 0, 'YXZ');
 }
@@ -1084,20 +979,14 @@ function animate() {
     updateCamera(dt);
   }
 
-  // Обновляем частицы огня
   updateFireParticles(dt);
 
   if (isDev) {
     sun.position.set(state.player.position.x + 20, state.player.position.y + 40, state.player.position.z + 20);
     sun.target.position.copy(state.player.position);
     sun.target.updateMatrixWorld();
-
     const camPos = camera.position;
-    devInfoEl.textContent =
-      `FPS: ${fps}\n` +
-      `Mode: ${dev.mode}\n` +
-      `Cam: ${camPos.x.toFixed(1)}, ${camPos.y.toFixed(1)}, ${camPos.z.toFixed(1)}\n` +
-      (dev.mode === 'play' ? `Ball: ${state.player.position.x.toFixed(1)}, ${state.player.position.y.toFixed(1)}, ${state.player.position.z.toFixed(1)}` : '');
+    devInfoEl.textContent = `FPS: ${fps}\nMode: ${dev.mode}\nCam: ${camPos.x.toFixed(1)}, ${camPos.y.toFixed(1)}, ${camPos.z.toFixed(1)}\n` + (dev.mode === 'play' ? `Ball: ${state.player.position.x.toFixed(1)}, ${state.player.position.y.toFixed(1)}, ${state.player.position.z.toFixed(1)}` : '');
   }
 
   renderer.render(scene, camera);
