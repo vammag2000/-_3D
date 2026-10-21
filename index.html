@@ -149,6 +149,14 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 const isDev = new URLSearchParams(location.search).get('dev') === '1';
 const SAVED_OBJECTS = {};
 
+// ⬇⬇⬇ СПИСОК ТВОИХ ФАЙЛОВ УРОВНЯ ⬇⬇⬇
+// Просто добавляй сюда новые названия файлов, которые загружаешь на GitHub
+const LEVEL_FILES = [
+  'zov.glb',       // Твой основной пол
+  // 'wall.glb',      // Пример: стены
+  // 'trampoline.glb' // Пример: трамплин
+];
+
 // --- ФИЗИЧЕСКИЕ КОНСТАНТЫ ---
 const MAX_SPEED          = 7.0;   
 const ACCELERATION       = 25.0;  
@@ -222,36 +230,47 @@ const UP = new THREE.Vector3(0, 1, 0);
 // =========================================================
 const loadingEl = document.getElementById('loading');
 const loader = new GLTFLoader();
-let loadedCount = 0;
 
-function checkLoaded() {
-  loadedCount++;
-  if (loadedCount >= 2) loadingEl.classList.add('hidden');
-}
+// Функция загрузки всех файлов уровня
+async function loadLevel() {
+  state.map = new THREE.Group(); // Создаем общую группу для всех объектов уровня
+  scene.add(state.map);
 
-// ----- MAP -----
-loader.load('zov.glb', (gltf) => {
-  const map = gltf.scene;
-  map.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
-  scene.add(map);
-  state.map = map;
+  let objectCount = 0;
 
-  let i = 0;
-  map.traverse(o => { if (o.isMesh) o.userData.editId = 'obj_' + (i++); });
+  // Проходимся по списку файлов и грузим их по очереди
+  for (const filename of LEVEL_FILES) {
+    try {
+      loadingEl.textContent = `Загрузка: ${filename}...`;
+      const gltf = await loader.loadAsync(filename);
+      
+      const obj = gltf.scene;
+      obj.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
+      
+      // Даем уникальные ID для редактора
+      obj.traverse(o => { if (o.isMesh) o.userData.editId = filename + '_' + (objectCount++); });
+      
+      state.map.add(obj);
+    } catch (err) {
+      showError(`Не удалось загрузить ${filename}: ` + err.message);
+    }
+  }
+
+  // Применяем сохраненные позиции из редактора
   applySavedObjects();
 
+  // Спавн игрока
   const spawnY = findGroundHeight(0, 0);
   const sy = (spawnY !== null) ? spawnY : 0;
-  
   state.player.spawnPoint.set(0, sy + state.player.radius, 0);
   state.player.position.copy(state.player.spawnPoint);
   if (state.player.mesh) state.player.mesh.position.copy(state.player.position);
 
-  checkLoaded();
-}, undefined, (err) => {
-  showError('Ошибка zov.glb: ' + err.message);
-  checkLoaded();
-});
+  loadingEl.classList.add('hidden');
+}
+
+// Запускаем загрузку уровня
+loadLevel();
 
 // ----- CHARACTER (СФЕРА) -----
 loader.load('shell.glb', (gltf) => {
@@ -277,18 +296,19 @@ loader.load('shell.glb', (gltf) => {
   scene.add(group);
   state.player.mesh = group;
 
-  state.player.position.y = findGroundHeight(0, 0) + state.player.radius;
+  // Если карта уже загрузилась, ставим шар на нее
+  if (state.map) {
+    state.player.position.y = (findGroundHeight(0, 0) || 0) + state.player.radius;
+  }
   group.position.copy(state.player.position);
 
   showError(`Сфера загружена. Радиус: ${state.player.radius.toFixed(2)}`, true);
-  checkLoaded();
 }, undefined, (err) => {
   showError('Ошибка shell.glb: ' + err.message);
-  checkLoaded();
 });
 
 // =========================================================
-// 6) ФИЗИКА КАЧЕНИЯ И КОЛЛИЗИИ
+// 6) ФИЗИКА
 // =========================================================
 function findGroundHeight(x, z) {
   if (!state.map) return null;
@@ -302,6 +322,12 @@ function isDescendantOf(obj, ancestor) {
   let p = obj;
   while (p) { if (p === ancestor) return true; p = p.parent; }
   return false;
+}
+
+// Для трамплинов (задел на будущее)
+function checkTrampolineCollisions() {
+  // Можно проверять имя объекта, на который наступил шар (hits[0].object.name)
+  // Если имя "trampoline", то p.velocity.y = 15.0;
 }
 
 function updatePhysics(dt) {
@@ -580,9 +606,7 @@ btnEditor.addEventListener('click', () => {
   setDevMode('editor');
   if (!dev.transformControls) {
     const tc = new TransformControls(camera, renderer.domElement);
-    // Важно: добавляем в сцену именно helper, так как в r160 TC не наследуется от Object3D
     if (tc.getHelper) scene.add(tc.getHelper()); else scene.add(tc);
-    
     tc.addEventListener('dragging-changed', (e) => {
       if (!e.value && dev.selectedObject) snapObjectToGround(dev.selectedObject);
     });
@@ -758,9 +782,6 @@ function animate() {
     updatePhysics(dt);
     updateCamera(dt);
   }
-
-  // ОШИБКА БЫЛА ЗДЕСЬ: dev.transformControls.update() больше не нужен в r160
-  // (Он обновляется автоматически внутри библиотеки Three.js)
 
   if (isDev) {
     sun.position.set(state.player.position.x + 20, state.player.position.y + 40, state.player.position.z + 20);
